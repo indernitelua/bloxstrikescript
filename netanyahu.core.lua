@@ -344,8 +344,67 @@ local MotionSamples = setmetatable({}, {__mode = "k"})
 local AimDiagnostics = {Hitbox = "none", LeadMs = 0, Speed = 0}
 Public.GetAimState = function() return table.clone(AimDiagnostics) end
 local ShotTracers = {}
+Public.TracerFolder = newInstance("Folder")
+Public.TracerFolder.Name = "NetanyahuBulletTracers"
+Public.TracerFolder.Parent = workspace
+function Public.DestroyShotTracer(trace)
+    if trace.Part then trace.Part:Destroy() end
+    if trace.Glow then trace.Glow:Destroy() end
+end
+function Public.ClearShotTracers()
+    for _, trace in ipairs(ShotTracers) do Public.DestroyShotTracer(trace) end
+    table.clear(ShotTracers)
+end
+function Public.CreateTracerPart(origin, endpoint, width, material, color, transparency)
+    local delta = endpoint - origin
+    local part = newInstance("Part")
+    part.Name = "Tracer"
+    part.Anchored = true
+    part.CanCollide = false
+    part.CanTouch = false
+    part.CanQuery = false
+    part.CastShadow = false
+    part.Size = Vector3.new(width, width, delta.Magnitude)
+    part.CFrame = CFrame.lookAt(origin + delta * 0.5, endpoint)
+    part.Material = material
+    part.Color = color
+    part.Transparency = transparency
+    part.Parent = Public.TracerFolder
+    return part
+end
 local PendingHits = {}
 local HitmarkerUntil = 0
+Public.CombatAudio = {Sounds = {}, Index = 0}
+function Public.PlayCombatSound(kind)
+    if not Running or not Flags[kind .. "_sound"] then return nil end
+    local preset = Flags[kind .. "_sound_preset"] or (kind == "hit" and "Tick" or kind == "shot" and "Mech" or "Chime")
+    if preset == "None" then return nil end
+    local state = Public.CombatAudio
+    state.Index = state.Index % 6 + 1
+    local sound = state.Sounds[state.Index]
+    if not sound then
+        sound = newInstance("Sound")
+        sound.Name = "NetanyahuCombatSound"
+        sound.Parent = game:GetService("SoundService")
+        state.Sounds[state.Index] = sound
+    end
+    sound:Stop()
+    local asset = preset == "Custom" and tostring(Flags[kind .. "_sound_id"] or ""):match("^%s*(%d+)%s*$") or nil
+    local libraryAsset = type(Arvn.GetSoundAsset) == "function" and Arvn:GetSoundAsset(preset) or nil
+    sound.SoundId = asset and "rbxassetid://" .. asset or libraryAsset or "rbxasset://sounds/electronicpingshort.wav"
+    sound.Volume = math.clamp((Flags[kind .. "_sound_volume"] or 50) / 100, 0, 1)
+    sound.PlaybackSpeed = preset == "Custom" and (kind == "hit" and 1.35 or 0.75) or 1
+    sound:Play()
+    return sound
+end
+do
+    local kills = LocalPlayer:GetAttribute("Kills") or 0
+    Arvn:Connect(LocalPlayer:GetAttributeChangedSignal("Kills"), function()
+        local current = LocalPlayer:GetAttribute("Kills") or 0
+        if current > kills then Public.PlayCombatSound("kill") end
+        kills = current
+    end)
+end
 local CurrentTarget = nil
 local LastDodge = 0
 local DodgeSide = 1
@@ -765,12 +824,24 @@ local function recordShot(packet)
     if Flags.bullet_tracers then
         if #ShotTracers >= 48 then
             local oldest = table.remove(ShotTracers, 1)
-            if oldest then removeDrawing(oldest.Line) end
+            if oldest then Public.DestroyShotTracer(oldest) end
         end
-        local line = drawing("Line", {Visible = false, Thickness = 1.5, Color = Color3.fromRGB(185, 137, 255), Transparency = 1})
-        ShotTracers[#ShotTracers + 1] = {Line = line, Origin = packet.Origin, Endpoint = packet.Origin + packet.Direction * math.max(0, packet.Distance), Expires = os.clock() + 0.24}
+        local endpoint = packet.Origin + packet.Direction * math.clamp(packet.Distance, 0, 1200)
+        for _, hit in ipairs(packet.Hits or {}) do
+            if typeof(hit.Position) == "Vector3" then endpoint = hit.Position end
+        end
+        if (endpoint - packet.Origin).Magnitude > 0.01 then
+            local color = palette("bullet_color", Color3.fromRGB(185, 137, 255))
+            local material = ({Neon = Enum.Material.Neon, ForceField = Enum.Material.ForceField, Glass = Enum.Material.Glass, Metal = Enum.Material.Metal, SmoothPlastic = Enum.Material.SmoothPlastic})[Flags.bullet_material or "Neon"] or Enum.Material.Neon
+            local width = math.clamp(Flags.bullet_width or 0.08, 0.02, 0.3)
+            local lifetime = math.clamp(Flags.bullet_lifetime or 1.2, 0.2, 4)
+            local transparency = material == Enum.Material.Glass and 0.2 or 0.05
+            local trace = {Part = Public.CreateTracerPart(packet.Origin, endpoint, width, material, color, transparency), Width = width, Transparency = transparency, Created = os.clock(), Lifetime = lifetime, Expires = os.clock() + lifetime}
+            if Flags.bullet_glow ~= false then trace.Glow = Public.CreateTracerPart(packet.Origin, endpoint, width * 2.5, Enum.Material.Neon, color, 0.8) end
+            ShotTracers[#ShotTracers + 1] = trace
+        end
     end
-    if Flags.hitmarker then
+    if Flags.hitmarker or Flags.hit_sound then
         for _, hit in ipairs(packet.Hits or {}) do
             local model = hit and hit.Instance and characterOf(hit.Instance)
             local health = model and model:GetAttribute("Health")
@@ -1381,29 +1452,25 @@ local function updateShotVisuals(cam)
     local now = os.clock()
     if not Flags.bullet_tracers then
         for i = #ShotTracers, 1, -1 do
-            removeDrawing(ShotTracers[i].Line)
+            Public.DestroyShotTracer(ShotTracers[i])
             table.remove(ShotTracers, i)
         end
     else
         for i = #ShotTracers, 1, -1 do
             local trace = ShotTracers[i]
             if now >= trace.Expires then
-                removeDrawing(trace.Line)
+                Public.DestroyShotTracer(trace)
                 table.remove(ShotTracers, i)
             else
-                trace.Line.Color = palette("bullet_color", Color3.fromRGB(185, 137, 255))
-                local start, startOn = cam:WorldToViewportPoint(trace.Origin)
-                local finish, finishOn = cam:WorldToViewportPoint(trace.Endpoint)
-                trace.Line.Visible = startOn and finishOn and start.Z > 0 and finish.Z > 0
-                if trace.Line.Visible then
-                    trace.Line.From = Vector2.new(start.X, start.Y)
-                    trace.Line.To = Vector2.new(finish.X, finish.Y)
-                    trace.Line.Transparency = math.clamp((trace.Expires - now) / 0.24, 0, 1)
-                end
+                local progress = math.clamp((now - trace.Created - trace.Lifetime * 0.55) / (trace.Lifetime * 0.45), 0, 1)
+                local fade = progress * progress * (3 - 2 * progress)
+                trace.Part.Transparency = trace.Transparency + (1 - trace.Transparency) * fade
+                trace.Part.Size = Vector3.new(trace.Width * (1 - fade * 0.7), trace.Width * (1 - fade * 0.7), trace.Part.Size.Z)
+                if trace.Glow then trace.Glow.Transparency = 0.8 + fade * 0.2 end
             end
         end
     end
-    if not Flags.hitmarker then
+    if not Flags.hitmarker and not Flags.hit_sound then
         table.clear(PendingHits)
         HitmarkerUntil = 0
     else
@@ -1414,6 +1481,7 @@ local function updateShotVisuals(cam)
             elseif health < pending.Health then
                 PendingHits[model] = nil
                 HitmarkerUntil = now + 0.35
+                Public.PlayCombatSound("hit")
             end
         end
     end
@@ -2027,6 +2095,11 @@ PlayerSection:Toggle({Name = "Chams", Flag = "esp_chams", Default = false})
 PlayerSection:Dropdown({Name = "Chams style", Flag = "chams_style", Values = {"Shaded", "Glow", "Outline"}, Default = "Shaded"})
 Public.PlayerMain:Toggle({Name = "Teammates", Flag = "esp_teammates", Default = false})
 Public.PlayerMain:Toggle({Name = "Bullet Tracers", Flag = "bullet_tracers", Default = false})
+local TracerSettings = Public.PlayerMain:Page("Bullet tracers")
+TracerSettings:Dropdown({Name = "Material", Flag = "bullet_material", Values = {"Neon", "ForceField", "Glass", "Metal", "SmoothPlastic"}, Default = "Neon"})
+TracerSettings:Slider({Name = "Lifetime", Flag = "bullet_lifetime", Min = 0.2, Max = 4, Default = 1.2, Step = 0.1, Suffix = "s"})
+TracerSettings:Slider({Name = "Width", Flag = "bullet_width", Min = 0.02, Max = 0.3, Default = 0.08, Step = 0.01})
+TracerSettings:Toggle({Name = "Soft glow", Flag = "bullet_glow", Default = true})
 Public.PlayerMain:Toggle({Name = "Offscreen ESP", Flag = "esp_arrow", Default = false})
 Public.PlayerMain:Toggle({Name = "Radar", Flag = "radar", Default = false})
 local ObjectsTab = Public.Navigation.Visuals
@@ -2151,6 +2224,21 @@ ViewSection:Toggle({Name = "Weapon panel", Flag = "weapon_hud", Default = false}
 ViewSection:Toggle({Name = "Ammo indicator", Flag = "ammo_indicator", Default = false})
 ViewSection:Slider({Name = "Low ammo threshold", Flag = "low_ammo_threshold", Min = 1, Max = 100, Default = 25, Suffix = "%"})
 local EffectsSection = Public.VisualCommon:Page("Combat effects")
+EffectsSection:Toggle({Name = "Replace weapon fire sound", Flag = "shot_sound", Default = false})
+EffectsSection:Dropdown({Name = "Weapon fire preset", Flag = "shot_sound_preset", Values = {"None", "Soft", "Tick", "Click", "Pop", "Bubble", "Glass", "Mech", "Switch", "Chime", "Ping", "Bell", "Swoosh", "Drop", "Custom"}, Default = "Mech"})
+EffectsSection:Slider({Name = "Weapon fire volume", Flag = "shot_sound_volume", Min = 0, Max = 100, Default = 50, Suffix = "%"})
+EffectsSection:Input({Name = "Weapon fire sound ID", Flag = "shot_sound_id", Default = ""})
+EffectsSection:Button({Name = "Test weapon fire sound", Callback = function() Public.PlayCombatSound("shot") end})
+EffectsSection:Toggle({Name = "Hit sound", Flag = "hit_sound", Default = false})
+EffectsSection:Dropdown({Name = "Hit preset", Flag = "hit_sound_preset", Values = {"None", "Soft", "Tick", "Click", "Pop", "Bubble", "Glass", "Mech", "Switch", "Chime", "Ping", "Bell", "Swoosh", "Drop", "Custom"}, Default = "Tick"})
+EffectsSection:Slider({Name = "Hit volume", Flag = "hit_sound_volume", Min = 0, Max = 100, Default = 50, Suffix = "%"})
+EffectsSection:Input({Name = "Hit sound ID", Flag = "hit_sound_id", Default = ""})
+EffectsSection:Button({Name = "Test hit sound", Callback = function() Public.PlayCombatSound("hit") end})
+EffectsSection:Toggle({Name = "Kill sound", Flag = "kill_sound", Default = false})
+EffectsSection:Dropdown({Name = "Kill preset", Flag = "kill_sound_preset", Values = {"None", "Soft", "Tick", "Click", "Pop", "Bubble", "Glass", "Mech", "Switch", "Chime", "Ping", "Bell", "Swoosh", "Drop", "golda", "fidi midi", "lopata challenge", "Custom"}, Default = "Chime"})
+EffectsSection:Slider({Name = "Kill volume", Flag = "kill_sound_volume", Min = 0, Max = 100, Default = 60, Suffix = "%"})
+EffectsSection:Input({Name = "Kill sound ID", Flag = "kill_sound_id", Default = ""})
+EffectsSection:Button({Name = "Test kill sound", Callback = function() Public.PlayCombatSound("kill") end})
 Public.VisualCommon:Toggle({Name = "Hit Marker", Flag = "hitmarker", Default = false})
 local InterfaceTab = Public.Navigation.Visuals
 local InterfaceSection = Public.VisualCommon:Page("Overlays")
@@ -2330,6 +2418,10 @@ local function shutdown(eject)
     if not Running then return end
     Running = false
     Runtime:Stop()
+    Public.ClearShotTracers()
+    Public.TracerFolder:Destroy()
+    for _, sound in pairs(Public.CombatAudio.Sounds) do sound:Destroy() end
+    table.clear(Public.CombatAudio.Sounds)
     RunService:UnbindFromRenderStep("BloxStrikeArvn")
     RunService:UnbindFromRenderStep("BloxStrikeArvnCursor")
     Public.CursorState.Connection:Disconnect()
@@ -2404,7 +2496,7 @@ local function optionalHook(object, key, predicate, replacement, watchedFlags)
 end
 
 local OriginalPerformRaycast = Bullet._performRaycast
-optionalHook(Bullet, "_performRaycast", function() return Flags.silent_aim or Flags.no_spread or Flags.bullet_tracers or Flags.hitmarker or Flags.rage_penetration end, function(self, spread)
+optionalHook(Bullet, "_performRaycast", function() return Flags.silent_aim or Flags.no_spread or Flags.bullet_tracers or Flags.hitmarker or Flags.hit_sound or Flags.rage_penetration end, function(self, spread)
     if not Flags.silent_aim and not Flags.no_spread then
         local packet = OriginalPerformRaycast(self, spread)
         recordShot(packet)
@@ -2453,13 +2545,33 @@ optionalHook(Bullet, "_performRaycast", function() return Flags.silent_aim or Fl
     end
     recordShot(packet)
     return packet
-end, {"silent_aim", "no_spread", "bullet_tracers", "hitmarker", "rage_penetration"})
+end, {"silent_aim", "no_spread", "bullet_tracers", "hitmarker", "hit_sound", "rage_penetration"})
 
 optionalHook(CameraController, "setWeaponRecoil", function() return Flags.no_recoil end, function()
     CameraController.resetWeaponRecoil()
 end, {"no_recoil"})
 
 optionalHook(CameraController, "weaponKick", function() return Flags.no_kick end, function() end, {"no_kick"})
+do
+    local soundModule = ReplicatedStorage.Classes:FindFirstChild("Sound")
+    local ok, soundClass = pcall(function() return soundModule and require(soundModule :: ModuleScript) end)
+    if ok and type(soundClass) == "table" then
+        local original = soundClass.play
+        optionalHook(soundClass, "play", function() return Flags.shot_sound end, function(self, options, ...)
+            local parent = type(options) == "table" and options.Parent
+            local own = Characters:FindFirstChild(LocalPlayer.Name)
+            local gui = LocalPlayer:FindFirstChild("PlayerGui")
+            local cam = workspace.CurrentCamera
+            local localSound = typeof(parent) == "Instance" and ((gui and (parent == gui or parent:IsDescendantOf(gui))) or (cam and (parent == cam or parent:IsDescendantOf(cam))) or (own and (parent == own or parent:IsDescendantOf(own))))
+            local weapons = ReplicatedStorage.Database.Audio:FindFirstChild("Weapons")
+            local weaponGroup = type(self.SoundGroupName) == "string" and weapons and weapons:FindFirstChild(self.SoundGroupName)
+            if localSound and weaponGroup and (options.Name == "Shoot" or options.Name == "Silencer") then
+                return Public.PlayCombatSound("shot")
+            end
+            return original(self, options, ...)
+        end, {"shot_sound"})
+    end
+end
 
 optionalHook(CameraController, "setPerspective", function() return Flags.force_thirdperson end, function(firstPerson, mouseEnabled, distance)
     ThirdPersonMouseMode = mouseEnabled == true
@@ -2476,15 +2588,12 @@ end, {"force_thirdperson"})
 
 local OriginalFirePosition = CameraController.toWeaponFirePosition
 optionalHook(CameraController, "toWeaponFirePosition", function() return Flags.force_thirdperson end, function(...)
-    local cam = camera()
-    local saved = cam and cam.CFrame
-    local result = OriginalFirePosition(...)
-    if saved and Flags.force_thirdperson and thirdPersonAvailable() then
-        cam.CFrame = saved
-        applyThirdPerson()
-    end
-    return result
+    if thirdPersonAvailable() then return nil end
+    return OriginalFirePosition(...)
 end, {"force_thirdperson"})
+
+local AutomaticShotCameraGuard = false
+optionalHook(CameraController, "updateCamera", function() return AutomaticShotCameraGuard and Flags.force_thirdperson and thirdPersonAvailable() end, function() end, {"force_thirdperson"})
 
 local originalSample = CharacterClass.SampleInput
 local AntiAimJitterSide = false
@@ -2694,17 +2803,20 @@ RunService:BindToRenderStep("BloxStrikeArvn", Enum.RenderPriority.Camera.Value +
         local weapon = InventoryController.peekCurrentEquippedForMovement()
         if weapon ~= LastAutoWeapon then LastAutoWeapon = weapon; LastAutoAttempt = 0 end
         AutoFireStats.Status = ragePart and "target ready" or "no eligible target"
-        if ragePart and weapon and Flags.auto_scope and weapon.Properties and weapon.Properties.HasScope and not weapon.IsAiming and type(weapon.scope) == "function" and os.clock() - Public.WeaponProfiles.LastScope >= 0.7 then
+        local automaticScope = Flags.auto_scope and not Flags.silent_aim
+        if ragePart and weapon and automaticScope and weapon.Properties and weapon.Properties.HasScope and not weapon.IsAiming and type(weapon.scope) == "function" and os.clock() - Public.WeaponProfiles.LastScope >= 0.7 then
             Public.WeaponProfiles.LastScope = os.clock()
             pcall(weapon.scope, weapon, false)
         end
-        local scopeReady = not Flags.auto_scope or not weapon or not weapon.Properties or not weapon.Properties.HasScope or weapon.IsAiming
+        local scopeReady = not automaticScope or not weapon or not weapon.Properties or not weapon.Properties.HasScope or weapon.IsAiming
         if Flags.rage_autofire and scopeReady and ragePart and weapon and not weapon.IsReloading and (weapon.Rounds or 0) > 0 and type(weapon.shoot) == "function" and os.clock() - LastAutoAttempt >= 1 / 120 then
             LastAutoAttempt = os.clock()
             if true then
                 local before = weapon.Rounds
                 AutoFireStats.Attempts += 1
+                AutomaticShotCameraGuard = true
                 local ok, err = pcall(weapon.shoot, weapon, "Primary")
+                AutomaticShotCameraGuard = false
                 if ok and weapon.Rounds < before then
                     LastTrigger = os.clock()
                     AutoFireStats.Shots += 1
