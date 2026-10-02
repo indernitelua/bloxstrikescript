@@ -1,4 +1,4 @@
-local coreUrl = "https://raw.githubusercontent.com/indernitelua/bloxstrikescript/main/netanyahu.core.obfuscated.lua"
+local coreUrl = "https://raw.githubusercontent.com/indernitelua/bloxstrikescript/main/netanyahu.core.lua.lua"
 local uiUrl = "https://raw.githubusercontent.com/indernitelua/bloxstrikescript/main/netanyahu.arvn.lua"
 local function compile(url)
     local source = game:HttpGet(url)
