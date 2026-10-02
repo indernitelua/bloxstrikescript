@@ -138,17 +138,20 @@ function Public.ResetBodyEffects()
     for _, object in ipairs(Public.BodyEffects.Objects) do object:Destroy() end
     Public.BodyEffects = {Root = nil, Objects = {}}
 end
-function Public.UpdateBodyEffects()
-    local model = Characters:FindFirstChild(LocalPlayer.Name)
+local function resetBodyEffectState(state)
+    for _, object in ipairs(state.Objects) do object:Destroy() end
+    table.clear(state)
+    state.Objects = {}
+end
+local function updateBodyEffectsFor(model, state, Flags)
     local root = model and (model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart)
     local enabled = Flags.body_sparkles or Flags.body_glow or Flags.body_aura or Flags.body_trail
     if not root or not enabled then
-        if Public.BodyEffects.Root then Public.ResetBodyEffects() end
+        if state.Root then resetBodyEffectState(state) end
         return
     end
-    if Public.BodyEffects.Root ~= root then
-        Public.ResetBodyEffects()
-        local state = Public.BodyEffects
+    if state.Root ~= root then
+        resetBodyEffectState(state)
         state.Root = root
         local function create(class, parent)
             local object = newInstance(class)
@@ -186,8 +189,7 @@ function Public.UpdateBodyEffects()
         state.Trail.Transparency = NumberSequence.new(0.2, 1)
         state.Trail.WidthScale = NumberSequence.new(1, 0)
     end
-    local state = Public.BodyEffects
-    local color = Flags.body_rainbow and Color3.fromHSV((os.clock() * (Flags.body_rainbow_speed or 15) / 100) % 1, 0.85, 1) or palette("body_effect_color", Color3.fromRGB(166, 112, 255))
+    local color = Flags.body_rainbow and Color3.fromHSV((os.clock() * (Flags.body_rainbow_speed or 15) / 100) % 1, 0.85, 1) or Flags.body_effect_color or Color3.fromRGB(166, 112, 255)
     state.Sparkles.Enabled = Flags.body_sparkles == true
     state.Sparkles.Color = ColorSequence.new(color)
     state.Sparkles.Rate = Flags.body_effect_density or 25
@@ -204,6 +206,11 @@ function Public.UpdateBodyEffects()
     state.Trail.Enabled = Flags.body_trail == true
     state.Trail.Color = ColorSequence.new(color)
     state.Trail.Lifetime = Flags.body_trail_lifetime or 0.5
+end
+function Public.UpdateBodyEffects()
+    local options = table.clone(Flags)
+    options.body_effect_color = palette("body_effect_color", Color3.fromRGB(166, 112, 255))
+    updateBodyEffectsFor(Characters:FindFirstChild(LocalPlayer.Name), Public.BodyEffects, options)
 end
 Public.SurfaceVisuals = {Body = {}, Map = {}, Root = nil, ScanAt = 0, Signature = nil, Highlight = nil}
 Public.Ragdolls = {}
@@ -1847,6 +1854,7 @@ local function api(method, path, body)
     if response.StatusCode < 200 or response.StatusCode >= 300 then error(data.error or "server request failed") end
     return data
 end
+Public.CommunityRequest = api
 local function run(action)
     if busy then return end
     busy = true
@@ -2250,6 +2258,73 @@ Window.LoadConfig = function(self, name)
     return result
 end
 end
+
+Public.SharedEffects = {Peers = {}, States = {}, Busy = false, Published = false, Generation = 0, LastReceived = 0, Error = nil}
+local function clearSharedEffects()
+    local shared = Public.SharedEffects
+    for _, state in pairs(shared.States) do resetBodyEffectState(state) end
+    table.clear(shared.States)
+    table.clear(shared.Peers)
+end
+local function exchangeEffects(enabled)
+    local color = palette("body_effect_color", Color3.fromRGB(166, 112, 255))
+    local effects = {color = {color.R, color.G, color.B}}
+    for _, flag in ipairs({"body_sparkles", "body_glow", "body_aura", "body_trail", "body_rainbow", "body_effect_density", "body_sparkle_size", "body_glow_brightness", "body_trail_lifetime", "body_rainbow_speed"}) do effects[flag] = Flags[flag] end
+    return Public.CommunityRequest("POST", "/effects", {room = tostring(game.PlaceId) .. ":" .. game.JobId, userId = LocalPlayer.UserId, enabled = enabled, effects = effects})
+end
+local function stopSharing()
+    local shared = Public.SharedEffects
+    shared.Generation += 1
+    clearSharedEffects()
+    if shared.Published then
+        shared.Published = false
+        task.spawn(function() pcall(exchangeEffects, false) end)
+    end
+end
+Arvn:OnEject(stopSharing)
+Runtime:Every("shared effects exchange", 10, function()
+    local shared = Public.SharedEffects
+    if not Running or shared.Busy or game.JobId == "" then return end
+    shared.Busy = true
+    shared.Published = true
+    local generation = shared.Generation
+    task.spawn(function()
+        local ok, result = pcall(exchangeEffects, true)
+        shared.Busy = false
+        if not Running or generation ~= shared.Generation then
+            pcall(exchangeEffects, false)
+            return
+        end
+        if not ok then shared.Error = tostring(result); return end
+        shared.Error = nil
+        shared.LastReceived = os.clock()
+        local peers = {}
+        for _, peer in ipairs(result.players or {}) do
+            if type(peer.userId) == "number" and type(peer.effects) == "table" and peer.userId ~= LocalPlayer.UserId then peers[peer.userId] = peer.effects end
+        end
+        shared.Peers = peers
+    end)
+end)
+Runtime:Every("shared effects visuals", 1 / 30, function()
+    local shared = Public.SharedEffects
+    if not Running or os.clock() - shared.LastReceived > 30 then clearSharedEffects(); return end
+    local active = {}
+    for userId, effects in pairs(shared.Peers) do
+        local player = Players:GetPlayerByUserId(userId)
+        local model = player and Characters:FindFirstChild(player.Name)
+        if model and model.Parent == Characters and isAlive(model) and type(effects.color) == "table" and #effects.color == 3 then
+            active[userId] = true
+            local state = shared.States[userId]
+            if not state then state = {Objects = {}}; shared.States[userId] = state end
+            local options = table.clone(effects)
+            options.body_effect_color = Color3.new(effects.color[1], effects.color[2], effects.color[3])
+            updateBodyEffectsFor(model, state, options)
+        end
+    end
+    for userId, state in pairs(shared.States) do
+        if not active[userId] then resetBodyEffectState(state); shared.States[userId] = nil end
+    end
+end)
 
 local function shutdown(eject)
     if not Running then return end
