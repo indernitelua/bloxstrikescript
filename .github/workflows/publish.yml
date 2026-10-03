@@ -1,0 +1,32 @@
+name: Publish netanyahu
+on:
+  push:
+    branches: [main]
+    paths:
+      - netanyahu.core.lua
+      - automation/**
+      - .github/workflows/publish.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: netanyahu-production
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify Worker
+        run: node automation/worker-test.mjs
+      - name: Publish Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: node automation/deploy.mjs worker
+      - name: Publish obfuscated core
+        env:
+          LICENSE_ADMIN_TOKEN: ${{ secrets.LICENSE_ADMIN_TOKEN }}
+        run: node automation/deploy.mjs core
