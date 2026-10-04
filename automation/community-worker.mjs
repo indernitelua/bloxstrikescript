@@ -83,7 +83,7 @@ export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
     const url = new URL(request.url);
-    if (url.pathname === "/" && request.method === "GET") return reply({ service: "netanyahu.cc configs", version: 4, storage: env.DB ? "bound" : "missing", routes: ["GET /configs", "GET /configs/:id", "POST /configs", "DELETE /configs/:id", "POST /configs/:id/vote", "POST /configs/:id/download", "POST /effects"] });
+    if (url.pathname === "/" && request.method === "GET") return reply({ service: "voidsense.cc configs", version: 4, storage: env.DB ? "bound" : "missing", routes: ["GET /configs", "GET /configs/:id", "POST /configs", "DELETE /configs/:id", "POST /configs/:id/vote", "POST /configs/:id/download", "POST /effects"] });
     if (!env.DB) return reply({ error: "missing_DB_binding" }, 503);
     try {
       await setup(env.DB);

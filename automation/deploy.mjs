@@ -3,11 +3,11 @@ const mode = process.argv[2];
 if (mode === 'core') {
   const token = process.env.LICENSE_ADMIN_TOKEN;
   if (!token) throw new Error('Missing LICENSE_ADMIN_TOKEN secret');
-  const source = await fs.readFile('netanyahu.core.lua', 'utf8');
-  if (!source.includes('MoonVeil') || Buffer.byteLength(source) > 1900000) throw new Error('Expected obfuscated core within service size limit');
+  const source = await fs.readFile('voidsense.core.lua', 'utf8');
+  if (!(source.startsWith('return function(createArvn)') || source.includes('MoonVeil')) || Buffer.byteLength(source) > 1900000) throw new Error('Expected core module within service size limit');
   const response = await fetch('https://netanyahu-licenses.vladosikthebestkid.workers.dev/admin/core', {method: 'POST', headers: {Authorization: 'Bearer ' + token, 'Content-Type': 'application/json'}, body: JSON.stringify({source})});
   if (!response.ok) throw new Error('Core upload failed: HTTP ' + response.status);
-  console.log('Obfuscated core uploaded to D1');
+  console.log('Core uploaded to D1');
 } else if (mode === 'worker') {
   const token = process.env.CLOUDFLARE_API_TOKEN;
   if (!token) throw new Error('Missing CLOUDFLARE_API_TOKEN secret');
