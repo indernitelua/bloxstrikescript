@@ -916,6 +916,7 @@ local function recordShot(packet)
 end
 
 local function partOf(model)
+    if Flags.rage_aim and Flags.rage_penetration and Flags.silent_aim and (Flags.rage_penetration_mode == "Direct (experimental)" or Flags.rage_penetration_mode == "Extended (experimental)") then return model:FindFirstChild("Head") end
     local choice = Flags.target_part or "Head"
     if Public.WeaponProfiles.Get("head_only", false) or choice == "Head" then return model:FindFirstChild("Head") end
     if choice == "Chest" then return model:FindFirstChild("UpperTorso") or model:FindFirstChild("Torso") or model.PrimaryPart end
@@ -924,6 +925,7 @@ local function partOf(model)
 end
 
 local function targetParts(model)
+    if Flags.rage_aim and Flags.rage_penetration and Flags.silent_aim and (Flags.rage_penetration_mode == "Direct (experimental)" or Flags.rage_penetration_mode == "Extended (experimental)") then return {model:FindFirstChild("Head")} end
     if Public.WeaponProfiles.Get("head_only", false) then return {model:FindFirstChild("Head")} end
     if not Flags.multipoint and (Flags.target_part or "Head") ~= "All" then return {partOf(model)} end
     return {model:FindFirstChild("Head"), model:FindFirstChild("UpperTorso"), model:FindFirstChild("Torso"), model:FindFirstChild("LowerTorso"), model:FindFirstChild("HumanoidRootPart"), model.PrimaryPart}
@@ -997,10 +999,9 @@ local function penetrationPacket(origin, direction, properties, selected)
     local ignore = own and {own, cam} or {cam}
     local distance = properties.Range or 500
     if selected and directPenetrationMode() and selected.Parent and isEnemy(selected.Parent) then
-        local point = aimPoint(selected)
-        local localPoint = selected.CFrame:PointToObjectSpace(point)
-        local half = selected.Size * 0.3
-        point = selected.CFrame:PointToWorldSpace(Vector3.new(math.clamp(localPoint.X, -half.X, half.X), math.clamp(localPoint.Y, -half.Y, half.Y), math.clamp(localPoint.Z, -half.Z, half.Z)))
+        selected = selected.Parent:FindFirstChild("Head")
+        if not selected then return {Origin = origin, Direction = direction, Distance = distance, Hits = {}} end
+        local point = selected.Position
         local delta = point - origin
         if delta.Magnitude > 0.001 and delta.Magnitude <= distance then
             return {Origin = origin, Direction = delta.Unit, Distance = delta.Magnitude, Hits = {{Position = point, Instance = selected, Material = selected.Material.Name, Normal = -delta.Unit, Exit = false}}}
@@ -1373,6 +1374,7 @@ function Public.UpdateShotAnimation()
         end
     end
 end
+Public.WeaponProfiles.Hud:OnRender(Public.UpdateShotAnimation)
 Public.GetVisualState = function() return {Drawings = #Drawings, Radar = RadarBackground.Visible, Watermark = Flags.ov_wm == true, Spectators = Public.SpectatorWidget.w.visible, Ammo = AmmoBackground.Visible, Tracers = #ShotTracers, Performance = Runtime:Snapshot()} end
 local FpsAverage = 60
 
@@ -2727,6 +2729,7 @@ end
 Studio.Init()
 end
 
+;(function()
 Public.Navigation = {}
 do
 local aim = Window:Group("Aimbot")
@@ -3335,6 +3338,7 @@ Window.LoadConfig = function(self, name)
     return result
 end
 end
+end)()
 
 do
     local navigation = Public.Navigation
@@ -3909,7 +3913,6 @@ RunService:BindToRenderStep("BloxStrikeArvn", Enum.RenderPriority.Camera.Value +
     local cam = camera()
     if not cam then return end
     if Public.SkinStudio then Public.SkinStudio.UpdateKnife() end
-    Public.UpdateShotAnimation()
     if Flags.rage_aim or Flags.aimbot or Flags.silent_aim then updateMotion(dt) end
     if Flags.force_thirdperson and thirdPersonAvailable() then updateThirdPersonPresentation() end
     FpsAverage = FpsAverage * 0.9 + (1 / math.max(dt, 0.001)) * 0.1

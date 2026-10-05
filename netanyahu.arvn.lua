@@ -8408,6 +8408,13 @@ end)
 local frames = 0
 D.on(RunService.RenderStepped, function(dt)
 	frames += 1
+	for _, widget in ipairs(D.WIDGETS or {}) do
+		if widget.dirty then
+			D.refreshWidget(widget)
+			widget.dirty = false
+		end
+		if widget.render then widget.render(dt) end
+	end
 	D.stepWindow(dt)
 	if D.menuOpen then
 		pcall(D.stepPreview, dt, D.winScale())
@@ -9810,12 +9817,17 @@ API.OnUnload = API.OnEject
 
 local Widget = {}
 Widget.__index = Widget
+function Widget:OnRender(callback)
+	assert(type(callback) == "function", "Expected render callback")
+	self.w.render = callback
+	return self
+end
 function Widget:SetRow(key, value, color)
 	key = tostring(key)
 	if self.w.values[key] == nil then table.insert(self.w.order, key) end
 	self.w.values[key] = value == nil and "" or value
 	self.w.colors[key] = color
-	D.refreshWidget(self.w)
+	self.w.dirty = true
 	return self
 end
 function Widget:RemoveRow(key)
@@ -9824,29 +9836,29 @@ function Widget:RemoveRow(key)
 	self.w.colors[key] = nil
 	local i = table.find(self.w.order, key)
 	if i then table.remove(self.w.order, i) end
-	D.refreshWidget(self.w)
+	self.w.dirty = true
 	return self
 end
 function Widget:Clear()
 	table.clear(self.w.values)
 	table.clear(self.w.colors)
 	table.clear(self.w.order)
-	D.refreshWidget(self.w)
+	self.w.dirty = true
 	return self
 end
 function Widget:SetTitle(t)
 	self.w.title = tostring(t)
-	if self.w.titleL then self.w.titleL.Text = self.w.title end
+	self.w.dirty = true
 	return self
 end
 function Widget:SetVisible(v)
 	self.w.visible = v and true or false
-	D.refreshWidget(self.w)
+	self.w.dirty = true
 	return self
 end
 function Widget:SetHeaderValue(value)
 	self.w.headerValue = value
-	if self.w.headerValueL then self.w.headerValueL.Text = tostring(value) end
+	self.w.dirty = true
 	return self
 end
 function Widget:Destroy()
