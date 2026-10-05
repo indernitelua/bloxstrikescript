@@ -1,4 +1,4 @@
-local _0x7E6B ="https://netanyahu-licenses.vladosikthebestkid.workers.dev"local _0xDDDB ="https://raw.githubusercontent.com/indernitelua/bloxstrikescript/0c2147d6b5c75c8604a58c9b60bd0128dc9c3b8b/voidsense.arvn.lua"local _0x04BF = game:GetService("HttpService")
+local _0x7E6B ="https://netanyahu-licenses.vladosikthebestkid.workers.dev"local _0xDDDB ="https://raw.githubusercontent.com/indernitelua/bloxstrikescript/11872f43778797cab371ce861592057765fe83c5/voidsense.arvn.lua"local _0x04BF = game:GetService("HttpService")
 local _0x2C73 = game:GetService("Players").LocalPlayer
 local _0x98EC ="NetanyahuCC/".. tostring(_0x2C73.UserId)
 local _0x00EA = game:GetService("UserInputService")
