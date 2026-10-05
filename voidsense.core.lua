@@ -1323,7 +1323,10 @@ local WeaponHud = drawing("Text", {Visible = false, Size = 15, Center = false, O
 local AmmoBackground = drawing("Square", {Visible = false, Filled = true, Transparency = 0.55, Color = Color3.fromRGB(22, 16, 32)})
 local AmmoFill = drawing("Square", {Visible = false, Filled = true, Transparency = 1, Color = Color3.fromRGB(199, 158, 255)})
 local LowAmmoHud = drawing("Text", {Visible = false, Size = 14, Center = false, Outline = true, Color = Color3.fromRGB(130, 76, 204), Transparency = 1})
-Public.SpectatorWidget = Arvn:Widget({Name = "Spectators", Flag = "bloxstrike_spectators", Icon = "eye", Width = 220, Position = Vector2.new(16, 120), Visible = false, Rows = {{"Watching you", 0}}})
+local hudColumnX = math.floor(workspace.CurrentCamera.ViewportSize.X * 0.122)
+Public.SpectatorWidget = Arvn:Widget({Name = "Spectators", Flag = "bloxstrike_spectators", Icon = "eye", Width = 250, Position = Vector2.new(hudColumnX, 124), Visible = false, HeaderOnly = true, HeaderValue = 0})
+Public.WeaponWidget = Arvn:Widget({Name = "Weapon", Flag = "voidsense_weapon", Icon = "crosshair", Width = 250, Position = Vector2.new(hudColumnX, 80), Visible = false, HeaderOnly = true, HeaderValue = "—"})
+Public.TargetWidget = Arvn:Widget({Name = "Target", Flag = "voidsense_target", Icon = "crosshair", Width = 250, Position = Vector2.new(hudColumnX, 36), Visible = false, HeaderOnly = true, HeaderValue = "No target"})
 Public.SpectatorCount = 0
 local RadarBackground = drawing("Square", {Visible = false, Filled = true, Transparency = 0.45, Color = Color3.fromRGB(22, 16, 32)})
 local RadarOutline = drawing("Square", {Visible = false, Filled = false, Thickness = 1, Transparency = 1, Color = Color3.fromRGB(138, 110, 174)})
@@ -1332,7 +1335,7 @@ Arvn:SetWatermark({Text = "voidsense.cc"})
 local GrenadeWarningHud = drawing("Text", {Visible = false, Size = 18, Center = true, Outline = true, Color = Color3.fromRGB(202, 158, 255), Transparency = 1})
 local TargetHud = drawing("Text", {Visible = false, Size = 14, Center = false, Outline = true, Color = Color3.fromRGB(180, 115, 255), Transparency = 1})
 local KeybindHud = drawing("Text", {Visible = false, Size = 14, Center = false, Outline = true, Color = Color3.fromRGB(235, 219, 255), Transparency = 1})
-Public.WeaponProfiles.Hud = Arvn:Widget({Name = "Shots", Flag = "bloxstrike_shots", Icon = "crosshair", Width = 260, Position = Vector2.new(16, 260), Visible = false, Empty = "No recent shots"})
+Public.WeaponProfiles.Hud = Arvn:Widget({Name = "Shots", Flag = "bloxstrike_shots", Icon = "crosshair", Width = 250, Position = Vector2.new(hudColumnX, 168), Visible = false, Empty = "No recent shots"})
 Public.ShotRows = {}
 Public.ShotAnimation = {Target = false, Value = 0.02, From = 0.02, Started = 0}
 function Public.UpdateShotAnimation()
@@ -1379,7 +1382,7 @@ local function updateHud(cam)
     local logs = Public.WeaponProfiles.Logs
     for i = #logs, 1, -1 do if os.clock() > (logs[i].ExpireAt or logs[i].Time + 8) then table.remove(logs, i) end end
     local hud = Public.WeaponProfiles.Hud
-    local shown = Flags.shot_logs == true and #logs > 0
+    local shown = Flags.shot_logs == true
     if Public.ShotAnimation.Target ~= shown then
         Public.ShotAnimation.Target = shown
         Public.ShotAnimation.From = Public.ShotAnimation.Value
@@ -1424,12 +1427,15 @@ local function updateHud(cam)
         Crosshair[3].From = center + Vector2.new(0, -gap - size); Crosshair[3].To = center + Vector2.new(0, -gap)
         Crosshair[4].From = center + Vector2.new(0, gap); Crosshair[4].To = center + Vector2.new(0, gap + size)
     end
-    WeaponHud.Visible = Flags.weapon_hud == true
+    WeaponHud.Visible = false
+    if Public.WeaponWidget.w.visible ~= (Flags.weapon_hud == true) then Public.WeaponWidget:SetVisible(Flags.weapon_hud == true) end
     if Flags.weapon_hud then
         local raw = LocalPlayer:GetAttribute("CurrentEquipped")
         local ok, data = pcall(function() return HttpService:JSONDecode(raw or "{}") end)
-        WeaponHud.Text = ok and string.format("%s  %s/%s", tostring(data.Name or "Weapon"), tostring(data.Rounds or "–"), tostring(data.Capacity or "–")) or "Weapon: —"
-        WeaponHud.Position = Vector2.new(20, cam.ViewportSize.Y - 85)
+        local title = ok and type(data) == "table" and tostring(data.Name or "Weapon") or "Weapon"
+        local value = ok and type(data) == "table" and string.format("%s / %s", tostring(data.Rounds or "—"), tostring(data.Capacity or "—")) or "—"
+        if Public.WeaponWidget.w.title ~= title then Public.WeaponWidget:SetTitle(title) end
+        if Public.WeaponWidget.w.headerValue ~= value then Public.WeaponWidget:SetHeaderValue(value) end
     end
     AmmoBackground.Visible = false
     AmmoFill.Visible = false
@@ -1457,13 +1463,6 @@ local function updateHud(cam)
             end
         end
     end
-    local spectatorVisible = Flags.spectators == true
-    if Public.SpectatorWidget.w.visible ~= spectatorVisible then Public.SpectatorWidget:SetVisible(spectatorVisible) end
-    local spectatorCount = LocalPlayer:GetAttribute("Spectators") or 0
-    if Public.SpectatorCount ~= spectatorCount then
-        Public.SpectatorCount = spectatorCount
-        Public.SpectatorWidget:SetRow("Watching you", spectatorCount)
-    end
     RadarBackground.Visible = Flags.radar == true
     RadarOutline.Visible = Flags.radar == true
     RadarCenter.Visible = Flags.radar == true
@@ -1473,13 +1472,13 @@ local function updateHud(cam)
         RadarOutline.Position = pos; RadarOutline.Size = Vector2.new(120, 120)
         RadarCenter.Position = pos + Vector2.new(60, 60)
     end
-    TargetHud.Visible = Flags.target_panel == true and CurrentTarget ~= nil
-    if TargetHud.Visible then
-        local health = CurrentTarget:GetAttribute("Health") or 0
-        TargetHud.Text = string.format("TARGET\n%s  |  %d HP", CurrentTarget.Name, health)
-        TargetHud.Position = Vector2.new(20, 120)
+    TargetHud.Visible = false
+    if Public.TargetWidget.w.visible ~= (Flags.target_panel == true) then Public.TargetWidget:SetVisible(Flags.target_panel == true) end
+    if Flags.target_panel then
+        local value = CurrentTarget and string.format("%s | %d HP", CurrentTarget.Name, CurrentTarget:GetAttribute("Health") or 0) or "No target"
+        if Public.TargetWidget.w.headerValue ~= value then Public.TargetWidget:SetHeaderValue(value) end
     end
-    KeybindHud.Visible = Flags.keybind_list == true
+    KeybindHud.Visible = false
     if KeybindHud.Visible then
         local active = {}
         if Flags.rage_aim then active[#active + 1] = "Rage aimbot" end
@@ -1507,6 +1506,17 @@ local function updateHud(cam)
             end
         end
     end
+end
+
+function Public.UpdateSpectators()
+    local spectatorVisible = Flags.spectators == true
+    local spectatorCount = LocalPlayer:GetAttribute("Spectators") or 0
+    if Public.SpectatorCount == spectatorCount and Public.SpectatorWidget.w.visible == spectatorVisible then return end
+    local ok = pcall(function()
+        if Public.SpectatorWidget.w.visible ~= spectatorVisible then Public.SpectatorWidget:SetVisible(spectatorVisible) end
+        if Public.SpectatorCount ~= spectatorCount then Public.SpectatorWidget:SetHeaderValue(spectatorCount) end
+    end)
+    if ok then Public.SpectatorCount = spectatorCount end
 end
 
 local function updateShotVisuals(cam)
@@ -1846,6 +1856,26 @@ do
 local Studio: any = {Ready = false, Loadout = {Weapons = {}}, Presets = {}, Names = {}, Weapons = {}, Updating = false, Preview = nil}
 Public.SkinStudio = Studio
 local wearOrder = {"Factory New", "Minimal Wear", "Field-Tested", "Well-Worn", "Battle-Scarred"}
+local artCache = {}
+local rarityColors = {Stock = Color3.fromRGB(160, 164, 174), Blue = Color3.fromRGB(88, 125, 242), Purple = Color3.fromRGB(165, 100, 235), Pink = Color3.fromRGB(221, 92, 190), Red = Color3.fromRGB(235, 85, 96), Gold = Color3.fromRGB(228, 184, 81)}
+function Studio.ItemArt(name, skin, wear)
+    local key = name .. "/" .. skin
+    local info = artCache[key]
+    if not info then
+        local common = ReplicatedStorage:FindFirstChild("Components")
+        common = common and common:FindFirstChild("Common")
+        local resolver = common and common:FindFirstChild("GetResolvedSkinInformation")
+        local ok, value = pcall(function() return resolver and require(resolver)(name, skin) end)
+        info = ok and type(value) == "table" and value or {}
+        artCache[key] = info
+    end
+    local image = info.imageAssetId
+    for _, item in ipairs(info.wearImages or {}) do
+        if not image then image = item.assetId end
+        if item.wear == wear then image = item.assetId; break end
+    end
+    return type(image) == "string" and image or "", rarityColors[info.rarity] or rarityColors.Stock
+end
 local folder = "NetanyahuCC/" .. tostring(LocalPlayer.UserId)
 local path = folder .. "/skin_sets_v1.json"
 local function status(message)
@@ -1992,6 +2022,10 @@ function Studio.RefreshPreview()
     local key = tostring(Flags.skin_edit_weapon) .. "/" .. tostring(Flags.skin_name) .. "/" .. tostring(Flags.skin_wear)
     if key == Studio.PreviewKey then return end
     Studio.PreviewKey = key
+    if preview.Image then
+        preview.Image.Image = Studio.ItemArt(Flags.skin_edit_weapon or "", Flags.skin_name or "Stock", Flags.skin_wear or "Factory New")
+        return
+    end
     preview.World:ClearAllChildren()
     local root = weaponsRoot()
     local base = root and root:FindFirstChild(Flags.skin_edit_weapon or "")
@@ -2029,23 +2063,15 @@ function Studio.RefreshPreview()
     preview.Camera.CFrame = CFrame.lookAt(Vector3.new(0, size.Y * 0.1, preview.Distance), Vector3.zero)
 end
 function Studio.BuildPreview(holder, ui)
-    local view = newInstance("ViewportFrame")
+    local view = newInstance("ImageLabel")
     view.Name = "SkinStudioPreview"
     view.Size = UDim2.fromScale(1, 1)
     view.BackgroundColor3 = ui.Theme.field
     view.BorderSizePixel = 0
-    view.Ambient = Color3.fromRGB(210, 210, 225)
-    view.LightColor = Color3.fromRGB(245, 230, 255)
-    view.LightDirection = Vector3.new(-1, -1, -1)
+    view.ScaleType = Enum.ScaleType.Fit
     view.Parent = holder
     ui.Corner(view, 24)
-    local world = newInstance("WorldModel")
-    world.Parent = view
-    local cam = newInstance("Camera")
-    cam.FieldOfView = 35
-    cam.Parent = view
-    view.CurrentCamera = cam
-    local preview: any = {View = view, World = world, Camera = cam, Angle = 0}
+    local preview: any = {View = view, Image = view}
     Studio.Preview = preview
     Studio.PreviewKey = nil
     ui.Cleanup(function() if Studio.Preview == preview then Studio.Preview = nil end end)
@@ -2056,8 +2082,6 @@ function Studio.BuildPreview(holder, ui)
         while parent and visible do if parent:IsA("GuiObject") and not parent.Visible then visible = false end; parent = parent.Parent end
         if not visible then return end
         Studio.RefreshPreview()
-        preview.Angle += dt * 0.35
-        if preview.Model and preview.Model.Parent then preview.Model:PivotTo(CFrame.Angles(0, preview.Angle, 0) * preview.BasePivot) end
     end)
 end
 local function isKnife(name)
@@ -2337,28 +2361,115 @@ function Studio.UpdateCharacterGloves()
 end
 function Studio.BuildGallery(holder, ui)
     local cards = {}
+    local mode = "items"
+    local selectedWeapon
+    local selectedSkin
+    local render
+    local saveSelection
+    local surfaceTweens = {}
+    local function enterSurface(surface, y)
+        for _, tween in ipairs(surfaceTweens) do tween:Cancel() end
+        table.clear(surfaceTweens)
+        surface.Position = UDim2.fromOffset(0, y)
+        surface.GroupTransparency = 0
+        if Flags.ui_anim == false then return end
+        surface.Position = UDim2.fromOffset(14, y + 6)
+        surface.GroupTransparency = 0.8
+        local fade = ui.Tween(surface, 0.24, {GroupTransparency = 0}, Enum.EasingStyle.Sine)
+        local slide = ui.Tween(surface, 0.34, {Position = UDim2.fromOffset(0, y)}, Enum.EasingStyle.Quint)
+        if fade then surfaceTweens[#surfaceTweens + 1] = fade end
+        if slide then surfaceTweens[#surfaceTweens + 1] = slide end
+    end
+    ui.Cleanup(function() for _, tween in ipairs(surfaceTweens) do tween:Cancel() end end)
+    local function round(item, radius)
+        local corner = ui.Corner(item, radius)
+        corner.CornerRadius = UDim.new(0, radius)
+    end
+    local toolbar = ui.Frame({Size = UDim2.new(1, 0, 0, 32), BackgroundTransparency = 1, Parent = holder})
+    local function action(parent, title, position, size, callback)
+        local button = ui.Button({Text = title, Position = position, Size = size, FontFace = ui.Font("semi"), TextSize = 13, TextColor3 = ui.Theme.text, BackgroundColor3 = ui.Theme.field, BackgroundTransparency = 0, BorderSizePixel = 0, Parent = parent})
+        round(button, 9)
+        local border = newInstance("UIStroke")
+        border.Thickness = 1
+        border.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        border.Parent = button
+        local hovered = false
+        local pressed = false
+        local scale = newInstance("UIScale")
+        scale.Parent = button
+        local motion = {}
+        ui.Cleanup(function() for _, animation in ipairs(motion) do animation:Cancel() end end)
+        local function paint()
+            for _, animation in ipairs(motion) do animation:Cancel() end
+            table.clear(motion)
+            local active = button:GetAttribute("AccentAction") == true
+            local violet = Color3.fromRGB(108, 64, 208)
+            local base = active and violet:Lerp(ui.Theme.field, 0.12) or ui.Theme.field:Lerp(violet, 0.16)
+            local color = pressed and base:Lerp(ui.Theme.win, 0.2) or hovered and base:Lerp(ui.Theme.text, 0.1) or base
+            local fill = ui.Tween(button, 0.18, {BackgroundColor3 = color})
+            local press = ui.Tween(scale, pressed and 0.09 or 0.2, {Scale = pressed and 0.975 or 1}, Enum.EasingStyle.Quint)
+            if fill then motion[#motion + 1] = fill end
+            if press then motion[#motion + 1] = press end
+            border.Color = active and Color3.fromRGB(147, 105, 241) or ui.Theme.text
+            local edge = ui.Tween(border, 0.18, {Transparency = active and 0.25 or hovered and 0.55 or 0.85})
+            if edge then motion[#motion + 1] = edge end
+        end
+        ui.Connect(button.MouseEnter, function() hovered = true; paint() end)
+        ui.Connect(button.MouseLeave, function() hovered = false; pressed = false; paint() end)
+        ui.Connect(button.MouseButton1Down, function() pressed = true; paint() end)
+        ui.Connect(button.MouseButton1Up, function() pressed = false; paint() end)
+        ui.Connect(button:GetAttributeChangedSignal("AccentAction"), paint)
+        ui.OnAccent(paint)
+        paint()
+        ui.Connect(button.MouseButton1Click, function() ui.Play(); callback() end)
+        return button
+    end
+    local inventoryButton = action(toolbar, "Inventory", UDim2.fromOffset(0, 0), UDim2.fromOffset(90, 32), function() if render then Studio.SelectWeapon(); render("items") end end)
+    inventoryButton:SetAttribute("AccentAction", true)
+    action(toolbar, "Configs", UDim2.fromOffset(98, 0), UDim2.fromOffset(112, 32), function() Public.Navigation.Skins:SetContent(Studio.ConfigSections) end)
+    local enabled
+    enabled = action(toolbar, "", UDim2.new(1, -118, 0, 0), UDim2.fromOffset(118, 32), function()
+        Arvn:SetFlag("skin_changer", not Flags.skin_changer)
+        enabled.Text = Flags.skin_changer and "Enabled" or "Disabled"
+        enabled:SetAttribute("AccentAction", Flags.skin_changer == true)
+    end)
+    enabled.Text = Flags.skin_changer and "Enabled" or "Disabled"
+    enabled:SetAttribute("AccentAction", Flags.skin_changer == true)
+    local breadcrumb = ui.Text({Text = "Items", Position = UDim2.fromOffset(0, 46), Size = UDim2.new(1, 0, 0, 22), TextSize = 12, TextColor3 = ui.Theme.sub, FontFace = ui.Font("med"), Parent = holder})
     local search = newInstance("TextBox")
-    search.Size = UDim2.new(1, 0, 0, 40)
+    search.Position = UDim2.fromOffset(0, 76)
+    search.Size = UDim2.new(1, 0, 0, 32)
     search.BackgroundColor3 = ui.Theme.field
     search.TextColor3 = ui.Theme.text
     search.PlaceholderColor3 = ui.Theme.sub
-    search.PlaceholderText = "search weapons"
+    search.PlaceholderText = "Search inventory"
     search.Text = ""
     search.FontFace = ui.Font("med")
     search.TextSize = 14
     search.ClearTextOnFocus = false
     search.BorderSizePixel = 0
     search.Parent = holder
-    ui.Corner(search, 24)
-    local grid = ui.Frame({Position = UDim2.fromOffset(0, 54), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Parent = holder})
+    round(search, 6)
+    local grid = newInstance("CanvasGroup")
+    grid.Position = UDim2.fromOffset(0, 122)
+    grid.Size = UDim2.new(1, 0, 0, 0)
+    grid.AutomaticSize = Enum.AutomaticSize.Y
+    grid.BackgroundTransparency = 1
+    grid.Parent = holder
+    local details = newInstance("CanvasGroup")
+    details.Position = UDim2.fromOffset(0, 76)
+    details.Size = UDim2.new(1, 0, 0, 330)
+    details.BackgroundTransparency = 1
+    details.Visible = false
+    details.Parent = holder
     local layout = newInstance("UIGridLayout")
-    layout.CellPadding = UDim2.fromOffset(12, 12)
+    layout.CellPadding = UDim2.fromOffset(10, 18)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.Parent = grid
     local function resize()
         local width = holder.AbsoluteSize.X
-        local columns = math.clamp(math.floor((width + 12) / 150), 2, 4)
-        layout.CellSize = UDim2.fromOffset(math.max(100, math.floor((width - (columns - 1) * 12) / columns)), 160)
+        local columns = math.clamp(math.floor((width + 10) / 120), 2, 4)
+        layout.CellSize = UDim2.fromOffset(math.max(90, math.floor((width - (columns - 1) * 10) / columns)), 124)
     end
     ui.Connect(holder:GetPropertyChangedSignal("AbsoluteSize"), resize)
     resize()
@@ -2368,88 +2479,196 @@ function Studio.BuildGallery(holder, ui)
             local name = selected and isKnife(selected) and selected or sideKnife()
             if card.Name ~= name then card.Name = name; card.Key = nil end
         end
-        local choice = Studio.Loadout.Weapons[card.Name]
+        local glove = table.find(GloveTypes, card.Name) ~= nil
+        local choice = card.Skin and {Skin = card.Skin, Wear = card.Wear or "Factory New"} or glove and {Skin = Flags.glove_type == card.Name and Flags.glove_skin or "Stock", Wear = Flags.glove_wear or "Factory New"} or Studio.Loadout.Weapons[card.Name]
         local key = choice and choice.Skin .. "/" .. choice.Wear or "Stock"
         if card.Key == key then return end
         card.Key = key
         card.Label.Text = string.lower(choice and choice.Skin or "stock")
-        card.World:ClearAllChildren()
-        local root = weaponsRoot()
-        local base = root and root:FindFirstChild(card.Name)
-        local cameraFolder = base and base:FindFirstChild("Camera")
-        local source = cameraFolder and cameraFolder:FindFirstChild("Weapon")
-        if not source then card.Label.Text = "preview unavailable"; return end
-        local model = source:Clone()
-        for _, item in ipairs(model:GetDescendants()) do
-            if item:IsA("Script") or item:IsA("LocalScript") or item:IsA("ModuleScript") then item:Destroy()
-            elseif item:IsA("BasePart") then item.Anchored = true; item.CanCollide = false; item.LocalTransparencyModifier = 0 end
-        end
-        local skins = skinsRoot()
-        local skinBase = skins and skins:FindFirstChild(card.Name)
-        local skin = choice and skinBase and skinBase:FindFirstChild(choice.Skin)
-        local group = skin and skin:FindFirstChild("Camera")
-        local wear = group and group:FindFirstChild(choice.Wear)
-        if wear then
-            for _, appearance in ipairs(wear:GetDescendants()) do
-                if appearance:IsA("SurfaceAppearance") then
-                    for _, part in ipairs(model:GetDescendants()) do
-                        if part:IsA("MeshPart") and part.Name == appearance.Name then
-                            for _, child in ipairs(part:GetChildren()) do if child:IsA("SurfaceAppearance") then child:Destroy() end end
-                            appearance:Clone().Parent = part
-                        end
-                    end
-                end
-            end
-        end
-        model.Parent = card.World
-        local bounds, size = model:GetBoundingBox()
-        model:PivotTo(CFrame.Angles(0, math.rad(65), 0) * CFrame.new(-bounds.Position) * model:GetPivot())
-        local distance = math.max(size.Magnitude, 1) / (2 * math.tan(math.rad(17.5))) * 1.12
-        card.Camera.CFrame = CFrame.lookAt(Vector3.new(0, size.Y * 0.12, distance), Vector3.zero)
+        local image, color = Studio.ItemArt(card.Name, choice and choice.Skin or "Stock", choice and choice.Wear or "Factory New")
+        card.Image.Image = image
+        if card.Stripe then card.Stripe.BackgroundColor3 = color end
+        if image == "" then card.Label.Text = "Image unavailable" end
     end
     local catalog = {}
     local knives = {}
+    local gloves = {}
+    local excluded = {C4 = true, LightSaber = true, ["Decoy Grenade"] = true, Flashbang = true, ["HE Grenade"] = true, ["Incendiary Grenade"] = true, Molotov = true, ["Smoke Grenade"] = true}
     for _, name in ipairs(Studio.Weapons) do
-        if isKnife(name) then knives[#knives + 1] = name else catalog[#catalog + 1] = name end
+        if not excluded[name] then
+            if isKnife(name) then knives[#knives + 1] = name else catalog[#catalog + 1] = name end
+        end
     end
     if #knives > 0 then table.insert(catalog, 1, "knife") end
-    for index, entry in ipairs(catalog) do
-        local knife = entry == "knife"
-        local name = knife and sideKnife() or entry
-        local button = ui.Button({Name = name, Text = "", Size = UDim2.fromOffset(150, 160), BackgroundTransparency = 0, BackgroundColor3 = ui.Theme.field, BorderSizePixel = 0, LayoutOrder = index, Parent = grid})
-        ui.Corner(button, 24)
+    for _, name in ipairs(GloveTypes) do if name ~= "Default" then gloves[#gloves + 1] = name end end
+    if #gloves > 0 then table.insert(catalog, 2, "gloves") end
+    local modelButton
+    modelButton = action(toolbar, "Knife model", UDim2.fromOffset(218, 0), UDim2.fromOffset(132, 32), function()
+        local models = table.find(gloves, selectedWeapon) and gloves or knives
+        if #models == 0 then return end
+        local index = table.find(models, selectedWeapon) or 0
+        selectedWeapon = models[index % #models + 1]
+        if models == knives then Arvn:SetFlag("skin_edit_weapon", selectedWeapon); Studio.SelectWeapon() end
+        render("skins")
+    end)
+    modelButton.Visible = false
+    local function draft(skin, wear)
+        Studio.Updating = true
+        Arvn:SetFlag("skin_name", skin)
+        Arvn:SetFlag("skin_wear", wear)
+        Studio.Updating = false
+    end
+    local function showDetails(skin)
+        mode = "detail"
+        selectedSkin = skin
+        grid.Visible = false
+        search.Visible = false
+        details.Visible = true
+        details:ClearAllChildren()
+        breadcrumb.Text = "Items / " .. selectedWeapon .. " / " .. skin
+        local current = Studio.Loadout.Weapons[selectedWeapon]
+        local glove = table.find(GloveTypes, selectedWeapon) ~= nil
+        if glove and Flags.glove_type == selectedWeapon then current = {Skin = Flags.glove_skin, Wear = Flags.glove_wear} end
+        local wear = current and current.Skin == skin and current.Wear or "Factory New"
+        draft(skin, wear)
+        Studio.Updating = true
+        if not glove then Studio.Options() end
+        Studio.Updating = false
+        wear = Flags.skin_wear
+        local preview = ui.Frame({Size = UDim2.new(0.56, -8, 0, 230), BackgroundColor3 = ui.Theme.field, Parent = details})
+        round(preview, 6)
+        ui.Stroke(preview, 0.75)
+        local stripe = ui.Frame({Size = UDim2.new(1, -6, 0, 2), Position = UDim2.new(0, 3, 1, -4), BackgroundColor3 = ui.Accent(), Parent = preview})
+        round(stripe, 1)
+        local view = newInstance("ImageLabel")
+        view.Position = UDim2.fromOffset(10, 10)
+        view.Size = UDim2.new(1, -20, 1, -20)
+        view.BackgroundTransparency = 1
+        view.ScaleType = Enum.ScaleType.Fit
+        view.Parent = preview
+        local label = ui.Text({Text = skin, Position = UDim2.fromOffset(0, 238), Size = UDim2.new(0.56, -8, 0, 22), TextSize = 13, TextColor3 = ui.Theme.text, Parent = details})
+        local card = {Name = selectedWeapon, Skin = skin, Wear = wear, Image = view, Label = label, Stripe = stripe}
+        populate(card)
+        local settings = ui.Frame({Position = UDim2.new(0.56, 8, 0, 0), Size = UDim2.new(0.44, -8, 0, 250), BackgroundTransparency = 1, Parent = details})
+        ui.Text({Text = selectedWeapon, FontFace = ui.Font("semi"), TextSize = 16, TextColor3 = ui.Theme.text, Size = UDim2.new(1, 0, 0, 26), Parent = settings})
+        ui.Text({Text = "Wear", Position = UDim2.fromOffset(0, 52), Size = UDim2.new(1, 0, 0, 20), TextSize = 12, TextColor3 = ui.Theme.sub, Parent = settings})
+        local wearButton
+        wearButton = action(settings, wear, UDim2.fromOffset(0, 80), UDim2.new(1, 0, 0, 34), function()
+            local base = skinsRoot()
+            base = base and base:FindFirstChild(selectedWeapon)
+            base = base and base:FindFirstChild(skin)
+            base = base and base:FindFirstChild("Camera")
+            local available = {}
+            for _, item in ipairs(wearOrder) do if base and base:FindFirstChild(item) then available[#available + 1] = item end end
+            if #available == 0 then return end
+            local index = table.find(available, wear) or 0
+            wear = available[index % #available + 1]
+            wearButton.Text = wear
+            draft(skin, wear)
+            card.Wear = wear
+            card.Key = nil
+            populate(card)
+        end)
+        action(details, "Cancel", UDim2.new(1, -208, 0, 286), UDim2.fromOffset(98, 34), function() Studio.SelectWeapon(); render("skins") end)
+        saveSelection = function()
+            if glove then
+                Arvn:SetFlag("glove_type", selectedWeapon)
+                Arvn:SetFlag("glove_skin", skin)
+                Arvn:SetFlag("glove_wear", wear)
+                Arvn:SetFlag("glove_changer", true)
+                Studio.SelectWeapon()
+            else
+                draft(skin, wear)
+                Studio.Assign()
+            end
+            render("items")
+        end
+        local saveButton = action(details, "Save & equip", UDim2.new(1, -104, 0, 286), UDim2.fromOffset(104, 34), saveSelection)
+        saveButton:SetAttribute("AccentAction", true)
+        enterSurface(details, 76)
+    end
+    local function makeCard(index, entry)
+        local knife = mode == "items" and entry == "knife"
+        local glove = mode == "items" and entry == "gloves"
+        local name = mode == "skins" and selectedWeapon or glove and (table.find(gloves, Flags.glove_type) and Flags.glove_type or gloves[1]) or knife and sideKnife() or entry
+        local skin = mode == "skins" and entry or nil
+        local button = ui.Button({Name = name, Text = "", Size = UDim2.fromOffset(120, 124), BackgroundTransparency = 1, BorderSizePixel = 0, LayoutOrder = index, Parent = grid})
+        local tile = ui.Frame({Size = UDim2.new(1, 0, 0, 86), BackgroundColor3 = ui.Theme.field, Parent = button})
+        round(tile, 6)
         local outline = newInstance("UIStroke")
         outline.Thickness = 1
         outline.Color = ui.Accent()
-        outline.Transparency = 1
-        outline.Parent = button
-        local view = newInstance("ViewportFrame")
-        view.Size = UDim2.new(1, -16, 0, 102)
+        outline.Transparency = 0.8
+        outline.Parent = tile
+        local stripe = ui.Frame({Position = UDim2.new(0, 3, 1, -4), Size = UDim2.new(1, -6, 0, 2), BackgroundColor3 = ui.Accent(), Parent = tile})
+        round(stripe, 1)
+        local view = newInstance("ImageLabel")
+        view.Size = UDim2.new(1, -12, 1, -8)
         view.Position = UDim2.fromOffset(8, 4)
         view.BackgroundTransparency = 1
-        view.Ambient = Color3.fromRGB(210, 210, 225)
-        view.LightColor = Color3.fromRGB(245, 230, 255)
-        view.Parent = button
-        local world = newInstance("WorldModel"); world.Parent = view
-        local cam = newInstance("Camera"); cam.FieldOfView = 35; cam.Parent = view; view.CurrentCamera = cam
-        ui.Text({Text = knife and "knife" or string.lower(name), FontFace = ui.Font("semi"), TextSize = 13, TextColor3 = ui.Theme.text, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Position = UDim2.fromOffset(12, 108), Size = UDim2.new(1, -24, 0, 20), Parent = button})
-        local label = ui.Text({Text = "stock", FontFace = ui.Font("med"), TextSize = 12, TextColor3 = ui.Theme.sub, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Position = UDim2.fromOffset(12, 129), Size = UDim2.new(1, -24, 0, 18), Parent = button})
-        local card = {Name = name, Knife = knife, Button = button, World = world, Camera = cam, Label = label, Outline = outline}
+        view.ScaleType = Enum.ScaleType.Fit
+        view.Parent = tile
+        ui.Text({Text = glove and "Gloves" or knife and "Knife" or name, FontFace = ui.Font("semi"), TextSize = 13, TextColor3 = ui.Theme.text, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Position = UDim2.fromOffset(0, 90), Size = UDim2.new(1, 0, 0, 18), Parent = button})
+        local label = ui.Text({Text = "", FontFace = ui.Font("med"), TextSize = 11, TextColor3 = ui.Theme.sub, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Position = UDim2.fromOffset(0, 108), Size = UDim2.new(1, 0, 0, 16), Parent = button})
+        local card = {Name = name, Skin = skin, Knife = knife, Button = button, Image = view, Label = label, Outline = outline, Stripe = stripe}
         cards[#cards + 1] = card
-        populate(card)
-        ui.Connect(button.MouseEnter, function() button.BackgroundColor3 = ui.Theme.hover end)
-        ui.Connect(button.MouseLeave, function() button.BackgroundColor3 = ui.Theme.field end)
+        ui.Connect(button.MouseEnter, function() tile.BackgroundColor3 = ui.Theme.hover end)
+        ui.Connect(button.MouseLeave, function() tile.BackgroundColor3 = ui.Theme.field end)
         ui.Connect(button.MouseButton1Click, function()
             ui.Play()
+            if skin then showDetails(skin); return end
             if Studio.WeaponControl then Studio.WeaponControl:SetValues(knife and knives or Studio.Weapons) end
-            Arvn:SetFlag("skin_edit_weapon", knife and sideKnife() or name)
-            Studio.SelectWeapon()
-            Public.Navigation.SkinEditor:Select()
+            selectedWeapon = knife and (type(Flags.skin_knife_model) == "string" and Flags.skin_knife_model ~= "" and Flags.skin_knife_model or sideKnife()) or name
+            if not table.find(GloveTypes, selectedWeapon) then Arvn:SetFlag("skin_edit_weapon", selectedWeapon); Studio.SelectWeapon() end
+            render("skins")
         end)
     end
+    render = function(nextMode)
+        mode = nextMode
+        saveSelection = nil
+        details.Visible = false
+        grid.Visible = true
+        search.Visible = true
+        search.Text = ""
+        modelButton.Visible = mode == "skins" and (isKnife(selectedWeapon or "") or table.find(gloves, selectedWeapon) ~= nil)
+        modelButton.Text = modelButton.Visible and selectedWeapon or "Knife model"
+        for _, child in ipairs(grid:GetChildren()) do if child ~= layout then child:Destroy() end end
+        table.clear(cards)
+        local entries = catalog
+        if mode == "skins" then
+            entries = {}
+            local root = skinsRoot()
+            local base = root and root:FindFirstChild(selectedWeapon)
+            if base then for _, skin in ipairs(base:GetChildren()) do if skin:FindFirstChild("Camera") then entries[#entries + 1] = skin.Name end end end
+            table.sort(entries)
+            breadcrumb.Text = "Items / " .. selectedWeapon .. " / Skins"
+            search.PlaceholderText = "Search skins"
+        else
+            breadcrumb.Text = "Items"
+            search.PlaceholderText = "Search inventory"
+        end
+        for index, entry in ipairs(entries) do makeCard(index, entry) end
+        resize()
+        enterSurface(grid, 122)
+    end
+    local inventoryView = {
+        SelectWeapon = function(name)
+            if not table.find(Studio.Weapons, name) and not table.find(GloveTypes, name) then return false end
+            selectedWeapon = name
+            if not table.find(GloveTypes, name) then Arvn:SetFlag("skin_edit_weapon", name); Studio.SelectWeapon() end
+            render("skins")
+            return true
+        end,
+        SelectSkin = showDetails,
+        ShowItems = function() Studio.SelectWeapon(); render("items") end,
+        Save = function() if mode == "detail" and saveSelection then saveSelection(); return true end; return false end,
+    }
+    Studio.InventoryView = inventoryView
+    ui.Cleanup(function() if Studio.InventoryView == inventoryView then Studio.InventoryView = nil end end)
+    render("items")
     ui.Connect(search:GetPropertyChangedSignal("Text"), function()
         local query = string.lower(search.Text)
-        for _, card in ipairs(cards) do card.Button.Visible = string.find(card.Knife and "knife нож" or string.lower(card.Name), query, 1, true) ~= nil end
+        for _, card in ipairs(cards) do card.Button.Visible = string.find(card.Skin and string.lower(card.Skin) or card.Knife and "knife нож" or table.find(gloves, card.Name) and "gloves перчатки" or string.lower(card.Name), query, 1, true) ~= nil end
     end)
     local elapsed = 0
     ui.Connect(RunService.Heartbeat, function(dt)
@@ -2458,7 +2677,19 @@ function Studio.BuildGallery(holder, ui)
         elapsed = 0
         local parent = holder
         while parent do if parent:IsA("GuiObject") and not parent.Visible then return end; parent = parent.Parent end
-        for _, card in ipairs(cards) do populate(card); card.Outline.Transparency = Flags.skin_edit_weapon == card.Name and 0 or 1; card.Outline.Color = ui.Accent() end
+        if mode == "detail" then return end
+        local budget = 4
+        local screenHeight = camera() and camera().ViewportSize.Y or 1080
+        for _, card in ipairs(cards) do
+            local visible = card.Button.Visible and card.Button.AbsolutePosition.Y + card.Button.AbsoluteSize.Y > 0 and card.Button.AbsolutePosition.Y < screenHeight
+            if visible and budget > 0 then
+                local previous = card.Key
+                populate(card)
+                if previous ~= card.Key then budget -= 1 end
+            end
+            card.Outline.Transparency = Studio.Loadout.Weapons[card.Name] and 0.35 or 0.8
+            card.Outline.Color = ui.Accent()
+        end
     end)
 end
 function Studio.Init()
@@ -2505,8 +2736,8 @@ local common = Window:Group("Common")
 Public.Navigation.Visuals = common:Tab({Name = "Visuals", Icon = "eye"})
 Public.Navigation.Effects = common:Tab({Name = "Effects", Icon = "sparkles"})
 Public.Navigation.HUD = common:Tab({Name = "HUD", Icon = "layout-dashboard"})
-Public.Navigation.Skins = common:Tab({Name = "Skinchanger", Icon = "palette"})
-Public.Navigation.SkinEditor = common:Tab({Name = "Skin editor", Icon = "sliders-horizontal"})
+Public.Navigation.Skins = common:Tab({Name = "Inventory", Icon = "boxes"})
+Public.Navigation.SkinEditor = Public.Navigation.Skins
 Public.Navigation.Misc = common:Tab({Name = "Miscellaneous", Icon = "list"})
 local presets = Window:Group("Presets")
 local configs = presets:Tab({Name = "Configs", Icon = "settings"})
@@ -2952,7 +3183,7 @@ EffectPaletteSection:ColorPicker({Name = "HUD accent", Flag = "hud_color", Defau
 local ViewSection = Public.VisualCommon:Page("View")
 Public.VisualCommon:Toggle({Name = "Force Thirdperson", Flag = "force_thirdperson", Default = false, Risky = true, Callback = function(on) if on then applyThirdPerson() else restoreThirdPerson() end end})
 Public.VisualCommon:Toggle({Name = "Visual Recoil", Flag = "no_recoil", Default = false})
-ViewSection:Toggle({Name = "Remove weapon kick", Flag = "no_kick", Default = false})
+ViewSection:Toggle({Name = "No Recoil", Flag = "no_kick", Default = false})
 ViewSection:Slider({Name = "Thirdperson distance", Flag = "thirdperson_distance", Min = 4, Max = 20, Default = 8, Suffix = " studs", Callback = function() if Flags.force_thirdperson then applyThirdPerson() end end})
 Public.VisualCommon:Toggle({Name = "Crosshair", Flag = "crosshair", Default = false})
 ViewSection:Dropdown({Name = "Crosshair rule", Flag = "crosshair_rule", Values = {"Always", "Hide with knife", "Hide with grenade"}, Default = "Always"})
@@ -2981,12 +3212,11 @@ local InterfaceSection = Public.VisualCommon:Page("Overlays")
 InterfaceSection:Toggle({Name = "Spectators", Flag = "spectators", Default = false})
 InterfaceSection:Toggle({Name = "Watermark", Flag = "ov_wm", Default = false})
 InterfaceSection:Toggle({Name = "Target panel", Flag = "target_panel", Default = false})
-InterfaceSection:Toggle({Name = "Keybind list", Flag = "keybind_list", Default = false})
+InterfaceSection:Toggle({Name = "Keybind list", Flag = "keybind_list", Default = true, Callback = function(value) Arvn:SetFlag("ov_kb", value) end})
 
 end
 do
 
-Public.Navigation.Skins:CustomPage(Public.SkinStudio.BuildGallery)
 local InventoryWeaponTab = Public.Navigation.SkinEditor
 local InventoryWeaponSection = InventoryWeaponTab:Section({Name = "Weapons", Side = "Left"})
 local InitialCamera = camera()
@@ -3015,18 +3245,22 @@ InventoryGloveSection:Dropdown({Name = "Wear", Flag = "glove_wear", Values = {"F
 GloveInfo = InventoryGloveSection:Info({Name = "Glove type", Value = "Default"})
 InventoryGloveSection:Toggle({Name = "Glove tint", Flag = "glove_tint", Default = false, Callback = function(on) if not on then restoreInventory() end end})
 InventoryGloveSection:Dropdown({Name = "Color", Flag = "glove_color", Values = {"Crimson", "Cyan", "Gold", "Violet", "Green"}, Default = "Violet"})
-local Sets = InventoryWeaponTab:Section({Name = "Skin sets", Side = "Right"})
+local Sets = InventoryWeaponTab:Section({Name = "Inventory configs", Side = "Left"})
 Public.SkinStudio.SetControl = Sets:Dropdown({Name = "Saved sets", Flag = "skin_set_choice", Values = Public.SkinStudio.Names, Default = "", Callback = function(name) if Public.SkinStudio.Presets[name] then Arvn:SetFlag("skin_set_name", name) end end})
 Sets:Input({Name = "Set name", Flag = "skin_set_name", Default = "", Placeholder = "my purple set"})
 Sets:Button({Name = "Create set", Callback = function() Public.SkinStudio.SaveSet(true) end})
 Sets:Button({Name = "Save set", Callback = function() Public.SkinStudio.SaveSet(false) end})
-Sets:Button({Name = "Apply set", Callback = Public.SkinStudio.ApplySet})
+Sets:Button({Name = "Load selected", Callback = Public.SkinStudio.ApplySet})
 Sets:Button({Name = "Rename set", Callback = Public.SkinStudio.RenameSet})
 Sets:Button({Name = "Delete set", Callback = Public.SkinStudio.DeleteSet})
 Public.SkinStudio.Status = Sets:Info({Name = "Status", Value = "choose a weapon, then apply its skin"})
 Public.SkinStudio.SelectWeapon()
 Public.SkinStudio.EditorReady = true
-InventoryWeaponSection:Button({Name = "Back to catalog", Callback = function() Public.Navigation.Skins:Select() end})
+InventoryWeaponSection:Button({Name = "Back to inventory", Callback = function() Public.Navigation.Skins:SetContent({}, Public.SkinStudio.BuildGallery) end})
+Public.SkinStudio.EditorSections = InventoryWeaponTab.entry.page
+Public.SkinStudio.ConfigSections = {{Sets.sec}, {}}
+Sets:Button({Name = "Back to inventory", Callback = function() Public.Navigation.Skins:SetContent({}, Public.SkinStudio.BuildGallery) end})
+Public.Navigation.Skins:SetContent({}, Public.SkinStudio.BuildGallery)
 
 end
 do
@@ -3141,7 +3375,7 @@ do
         for _, page in ipairs(pages or {}) do place(result:Page(page[1]), page[2]) end
         return result
     end
-    section("Rage", "Main", "Left", "rage_aim silent_aim rage_autofire", {
+    section("Rage", "Main", "Left", "rage_aim silent_aim rage_autofire no_kick", {
         {"Target radius", "silent_360 rage_fov"},
         {"Wall penetration", "rage_penetration rage_penetration_mode"},
         {"Firing", "rage_autostop auto_scope rage_reaction no_spread"}
@@ -3158,18 +3392,23 @@ do
         {"Response", "mouse_override legit_reaction legit_reset"}
     })
     section("Legit", "Triggerbot", "Right", "triggerbot", {{"Timing", "trigger_delay"}})
-    section("Visuals", "Players", "Left", "esp_enabled esp_teammates", {
-        {"Display", "esp_box esp_skeleton esp_name esp_health esp_distance"},
+    section("Visuals", "Players", "Left", "esp_enabled esp_box esp_skeleton esp_name esp_health", {
+        {"Extra display", "esp_teammates esp_distance"},
         {"Equipment", "esp_weapon esp_armor esp_defuser esp_money"},
         {"Tracking", "esp_tracer esp_direction esp_arrow radar esp_movement esp_move_speed"},
         {"Highlight", "esp_chams chams_style"},
         {"Colors", "enemy_color hidden_color team_color esp_text_color health_low_color health_high_color direction_color"}
     })
-    section("Visuals", "Body", "Left", "body_style body_rainbow", {
-        {"Material", "body_material body_color body_reflectance body_rainbow_speed"},
+    section("Visuals", "Camera", "Right", "force_thirdperson thirdperson_distance crosshair", {
+        {"Crosshair settings", "crosshair_rule aim_circle crosshair_color"},
+        {"Weapon motion", "no_recoil"}
+    })
+    section("Visuals", "Body effects", "Left", "body_style body_outline", {
+        {"Animation", "body_rainbow body_rainbow_speed"},
+        {"Material", "body_material body_color body_reflectance"},
         {"Particles", "body_sparkles body_glow body_aura body_trail"},
         {"Particle settings", "body_effect_color body_effect_density body_sparkle_size body_glow_brightness body_trail_lifetime"},
-        {"Outline", "body_outline body_outline_color body_outline_transparency"},
+        {"Outline settings", "body_outline_color body_outline_transparency"},
         {"Ragdolls", "ragdoll_style ragdoll_color ragdoll_material ragdoll_hide"}
     })
     section("Visuals", "World objects", "Right", "esp_bomb esp_weapons esp_grenades", {
@@ -3185,27 +3424,22 @@ do
     for key, row in pairs(rows) do
         if row.label and (row.label:lower() == "reset body and map" or row.label:lower() == "reset environment") then place(resets, key) end
     end
-    section("Visuals", "Camera", "Right", "force_thirdperson no_recoil no_kick", {
-        {"Third person", "thirdperson_distance"},
-        {"Crosshair", "crosshair crosshair_rule aim_circle crosshair_color"}
-    })
-    section("Effects", "Bullet tracers", "Left", "bullet_tracers", {
+    section("Effects", "Bullet tracers", "Left", "bullet_tracers bullet_lifetime", {
         {"Appearance", "bullet_material bullet_width bullet_glow bullet_color"},
-        {"Timing", "bullet_lifetime"}
     })
     section("Effects", "Hitmarker", "Left", "hitmarker", {{"Color", "hitmarker_color"}})
-    local audio = section("Effects", "Sounds", "Right", "shot_sound hit_sound kill_sound")
-    for _, kind in ipairs({"shot", "hit", "kill"}) do
-        local page = audio:Page(kind == "shot" and "Weapon fire" or kind == "hit" and "Hit" or "Kill")
-        place(page, kind .. "_sound_preset " .. kind .. "_sound_volume " .. kind .. "_sound_id")
+    for _, kind in ipairs({"kill", "hit", "shot"}) do
+        local audio = section("Effects", kind == "shot" and "Weapon fire sound" or kind == "hit" and "Hit sound" or "Kill sound", "Right", kind .. "_sound " .. kind .. "_sound_preset " .. kind .. "_sound_volume")
+        local page = audio:Page("Custom sound")
+        place(page, kind .. "_sound_id")
         for key, row in pairs(rows) do
-            if row.label and row.label:lower() == "test " .. (kind == "shot" and "weapon fire" or kind) .. " sound" then place(page, key) end
+            if row.label and row.label:lower() == "test " .. (kind == "shot" and "weapon fire" or kind) .. " sound" then place(audio, key) end
         end
     end
-    section("HUD", "Widgets", "Left", "ov_wm spectators shot_logs", {{"Extra panels", "target_panel keybind_list"}})
+    section("HUD", "Widgets", "Left", "spectators ov_wm keybind_list target_panel shot_logs")
     section("HUD", "Weapon information", "Right", "weapon_hud ammo_indicator", {{"Appearance", "low_ammo_threshold hud_color"}})
     section("Misc", "Movement", "Left", "bunny_hop air_strafe quick_stop", {{"Assists", "auto_peek dodge"}})
-    section("Misc", "Camera FOV", "Right", "custom_fov", {{"Settings", "camera_fov zoom_reduction"}})
+    section("Misc", "Camera FOV", "Right", "custom_fov camera_fov", {{"Zoom settings", "zoom_reduction"}})
     for _, key in ipairs({"Rage", "Legit", "Visuals", "Misc"}) do
         local extra
         for _, row in ipairs(sources[key]) do
@@ -3335,6 +3569,8 @@ local function shutdown(eject)
     for _, item in ipairs(Drawings) do pcall(function() item:Remove() end) end
     for _, highlight in pairs(Highlights) do pcall(function() highlight:Destroy() end) end
     if Public.SpectatorWidget then Public.SpectatorWidget:Destroy() end
+    if Public.WeaponWidget then Public.WeaponWidget:Destroy() end
+    if Public.TargetWidget then Public.TargetWidget:Destroy() end
     if Public.WeaponProfiles.Hud then Public.WeaponProfiles.Hud:Destroy() end
     Lighting.Brightness = OriginalLighting.Brightness
     Lighting.ClockTime = OriginalLighting.ClockTime
@@ -3527,7 +3763,10 @@ optionalHook(CharacterClass, "SampleInput", function() return Flags.anti_aim or 
                             local wish = basis:VectorToWorldSpace(Vector3.new(input.Move.X, 0, input.Move.Y)).Unit
                             local direction = horizontal.Unit
                             local turn = math.atan2(direction:Cross(wish).Y, direction:Dot(wish))
-                            local angle = math.acos(math.clamp(cap * 0.8 / horizontal.Magnitude, 0, 1))
+                            local acceleration = config.BunnyHopAirAccelerate > 0 and config.BunnyHopAirAccelerate or config.AirAccelerate
+                            local wishSpeed = math.min(config.MaxSpeed or config.DefaultBaseMoveSpeed, config.MaxBaseMoveSpeed or math.huge)
+                            local gain = math.min(cap, acceleration * wishSpeed * (config.SurfaceFrictionDefault or 1) / 64)
+                            local angle = math.acos(math.clamp((cap - gain) / horizontal.Magnitude, 0, 1))
                             direction = CFrame.Angles(0, turn >= 0 and angle or -angle, 0):VectorToWorldSpace(direction)
                             local localDirection = basis:VectorToObjectSpace(direction)
                             input.Move = Vector2.new(localDirection.X, localDirection.Z)
@@ -3649,6 +3888,7 @@ end, {"dodge", "air_strafe", "slow_walk", "quick_stop", "auto_peek"})
 
 Runtime:Every("players", 1 / 20, function() local cam = camera(); if cam then updatePlayers(cam) end end)
 Runtime:Every("hud", 1 / 15, function() local cam = camera(); if cam then applyThirdPerson(); updateHud(cam) end end)
+Runtime:Every("spectators", 1 / 10, Public.UpdateSpectators)
 Runtime:Every("shot visuals", 1 / 30, function() local cam = camera(); if cam then updateShotVisuals(cam) end end)
 Runtime:Every("world objects", 0.1, function() local cam = camera(); if cam then updateObjects(cam) end end)
 Runtime:Every("environment", 0.15, function() applyWorld(); applyEnvironment(); Public.SurfaceVisuals.Update() end)
@@ -3727,8 +3967,20 @@ RunService:BindToRenderStep("BloxStrikeArvn", Enum.RenderPriority.Camera.Value +
             if true then
                 local before = weapon.Rounds
                 AutoFireStats.Attempts += 1
+                local preserveView = Flags.silent_aim and Flags.force_thirdperson and thirdPersonAvailable()
+                local shotCamera = preserveView and camera()
+                local view = shotCamera and {CFrame = shotCamera.CFrame, Focus = shotCamera.Focus, FieldOfView = shotCamera.FieldOfView, Mode = LocalPlayer.CameraMode, Min = LocalPlayer.CameraMinZoomDistance, Max = LocalPlayer.CameraMaxZoomDistance}
                 AutomaticShotCameraGuard = true
                 local ok, err = pcall(weapon.shoot, weapon, "Primary")
+                if view and shotCamera == camera() then
+                    shotCamera.CFrame = view.CFrame
+                    shotCamera.Focus = view.Focus
+                    shotCamera.FieldOfView = view.FieldOfView
+                    LocalPlayer.CameraMode = view.Mode
+                    LocalPlayer.CameraMaxZoomDistance = view.Max
+                    LocalPlayer.CameraMinZoomDistance = view.Min
+                    setViewmodelHidden(true)
+                end
                 AutomaticShotCameraGuard = false
                 if ok and weapon.Rounds < before then
                     LastTrigger = os.clock()
@@ -3797,3 +4049,4 @@ end
 print("NETANYAHU_CC_READY")
 
 end
+

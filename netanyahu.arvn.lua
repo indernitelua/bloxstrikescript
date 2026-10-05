@@ -2526,28 +2526,44 @@ end
 function D.makeToggle(parent, flag, scope, order)
 	if S.ui_toggle == "Checkbox" then return makeCheckbox(parent, flag, scope, order) end
 	local sq = S.ui_toggle == "Square"
-	local trk = frame({Size = UDim2.fromOffset(36, 20), BackgroundColor3 = T.off, LayoutOrder = order, Parent = parent})
-	corner(trk, sq and 6 or 10)
-	local knob = frame({AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 10, 0.5, 0), Size = UDim2.fromOffset(14, 14), BackgroundColor3 = T.knobOff, Parent = trk})
-	corner(knob, sq and 4 or 7)
+	local trk = frame({Size = UDim2.fromOffset(40, 22), BackgroundColor3 = T.off, LayoutOrder = order, Parent = parent})
+	local trackCorner = corner(trk, sq and 6 or 11)
+	trackCorner.CornerRadius = UDim.new(0, sq and 6 or 11)
+	local rim = new("UIStroke", {Color = T.sub, Transparency = 0.8, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = trk})
+	local knob = frame({AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 11, 0.5, 0), Size = UDim2.fromOffset(16, 16), BackgroundColor3 = T.knobOff, Parent = trk})
+	local knobCorner = corner(knob, sq and 4 or 8)
+	knobCorner.CornerRadius = UDim.new(0, sq and 4 or 8)
+	local anims = {}
+	local token = 0
+	local function animateTo(object, duration, goal, style)
+		local animation = tween(object, duration, goal, style)
+		if animation then anims[#anims + 1] = animation end
+	end
 	if T.light then new("UIStroke", {Color = Color3.fromRGB(150, 150, 160), Transparency = 0.5, Parent = knob}) end
 	local function draw(animate)
+		token += 1
+		local currentToken = token
+		for _, animation in ipairs(anims) do animation:Cancel() end
+		table.clear(anims)
 		local v = S[flag] and true or false
-		local tc = v and D.accent() or T.off
-		local kc = v and T.white or T.knobOff
-		local pos = UDim2.new(0, v and 26 or 10, 0.5, 0)
+		local tc = v and D.accent():Lerp(T.off, 0.18) or T.off
+		local kc = v and T.white or T.knobOff:Lerp(T.text, 0.15)
+		local pos = UDim2.new(0, v and 29 or 11, 0.5, 0)
 		if animate and S.ui_anim ~= false then
-			tween(trk, 0.22, {BackgroundColor3 = tc})
-			tween(knob, 0.26, {Position = pos, BackgroundColor3 = kc})
-			tween(knob, 0.09, {Size = UDim2.fromOffset(21, 14)})
-			task.delay(D.tweenTime(0.09), function()
-				if knob.Parent then tween(knob, 0.24, {Size = UDim2.fromOffset(14, 14)}, Enum.EasingStyle.Back) end
+			animateTo(trk, 0.22, {BackgroundColor3 = tc})
+			animateTo(rim, 0.22, {Color = v and D.accent() or T.sub, Transparency = v and 0.4 or 0.8})
+			animateTo(knob, 0.28, {Position = pos, BackgroundColor3 = kc}, Enum.EasingStyle.Quint)
+			animateTo(knob, 0.1, {Size = UDim2.fromOffset(19, 14)}, Enum.EasingStyle.Sine)
+			task.delay(D.tweenTime(0.11), function()
+				if currentToken == token and knob.Parent then animateTo(knob, 0.2, {Size = UDim2.fromOffset(16, 16)}, Enum.EasingStyle.Quint) end
 			end)
 		else
-			trk.BackgroundColor3, knob.Position, knob.BackgroundColor3, knob.Size = tc, pos, kc, UDim2.fromOffset(14, 14)
+			trk.BackgroundColor3, knob.Position, knob.BackgroundColor3, knob.Size = tc, pos, kc, UDim2.fromOffset(16, 16)
+			rim.Color, rim.Transparency = v and D.accent() or T.sub, v and 0.4 or 0.8
 		end
 	end
 	draw(false)
+	scope[#scope + 1] = function() token += 1; for _, animation in ipairs(anims) do animation:Cancel() end end
 	scope[#scope + 1] = D.watch(flag, function() draw(true) end)
 	D.onAccent(trk, function() draw(false) end)
 	return trk
@@ -2616,16 +2632,18 @@ function D.makeSlider(parent, spec, scope, order, compact)
 	local dec = step >= 1 and 0 or #(string.match(tostring(step), "%.(%d+)") or "")
 	local trackW = compact and 96 or 116
 	local holder = frame({Size = UDim2.fromOffset(trackW + 62, 28), BackgroundTransparency = 1, LayoutOrder = order, Parent = parent})
-	local trk = frame({AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 6, 0.5, 0), Size = UDim2.fromOffset(trackW, 4), BackgroundColor3 = T.off, Parent = holder})
+	local trk = frame({AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 6, 0.5, 0), Size = UDim2.fromOffset(trackW, 5), BackgroundColor3 = T.off, Parent = holder})
 	corner(trk, 2)
 	local fill = frame({Size = UDim2.fromScale(0, 1), BackgroundColor3 = D.accent(), Parent = trk})
 	corner(fill, 2)
 	local knob = frame({AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(12, 12), BackgroundColor3 = T.white, ZIndex = 2, Parent = trk})
 	corner(knob, 6)
-	local ring = new("UIStroke", {Color = T.light and Color3.fromRGB(150, 150, 160) or D.accent(), Thickness = T.light and 1 or 0, Transparency = T.light and 0.4 or 0.3, Parent = knob})
+	local ring = new("UIStroke", {Color = D.accent(), Thickness = 2, Transparency = 0.65, Parent = knob})
 	local box = new("TextBox", {AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.fromOffset(48, 24), BackgroundColor3 = T.field, BorderSizePixel = 0, Text = "", FontFace = D.F(D.W.med), TextSize = 12, TextColor3 = T.label, ClearTextOnFocus = false, Parent = holder})
 	corner(box, M.rChip + 1)
-	stroke(box, 0.92)
+	local boxRim = stroke(box, 0.72)
+	local positionTweens = {}
+	scope[#scope + 1] = function() for _, anim in ipairs(positionTweens) do anim:Cancel() end end
 	local hit = button({Size = UDim2.new(0, trackW + 12, 1, 0), Parent = holder})
 	local dragging = false
 	local function fmt(v)
@@ -2634,9 +2652,11 @@ function D.makeSlider(parent, spec, scope, order, compact)
 	end
 	local function position(v, animate)
 		local a = math.clamp((v - spec.min) / (spec.max - spec.min), 0, 1)
+		for _, anim in ipairs(positionTweens) do anim:Cancel() end
+		positionTweens = {}
 		if animate then
-			tween(fill, 0.2, {Size = UDim2.fromScale(a, 1)})
-			tween(knob, 0.2, {Position = UDim2.fromScale(a, 0.5)})
+			positionTweens[1] = tween(fill, 0.24, {Size = UDim2.fromScale(a, 1)}, Enum.EasingStyle.Quint)
+			positionTweens[2] = tween(knob, 0.24, {Position = UDim2.fromScale(a, 0.5)}, Enum.EasingStyle.Quint)
 		else
 			fill.Size = UDim2.fromScale(a, 1)
 			knob.Position = UDim2.fromScale(a, 0.5)
@@ -2661,7 +2681,7 @@ function D.makeSlider(parent, spec, scope, order, compact)
 	local function grow(on)
 		tween(knob, 0.16, {Size = on and UDim2.fromOffset(16, 16) or UDim2.fromOffset(12, 12)})
 		ring.Color = on and D.accent() or (T.light and Color3.fromRGB(150, 150, 160) or D.accent())
-		tween(ring, 0.16, {Thickness = on and 3 or (T.light and 1 or 0)})
+		tween(ring, 0.16, {Thickness = on and 4 or 2, Transparency = on and 0.4 or 0.65})
 	end
 	hit.MouseEnter:Connect(function() if not dragging then tween(knob, 0.14, {Size = UDim2.fromOffset(14, 14)}) end end)
 	hit.MouseLeave:Connect(function() if not dragging then tween(knob, 0.16, {Size = UDim2.fromOffset(12, 12)}) end end)
@@ -2697,8 +2717,13 @@ function D.makeSlider(parent, spec, scope, order, compact)
 			draw(false)
 		end)
 	end)
-	box.Focused:Connect(function() box.Text = string.format("%." .. dec .. "f", S[spec.id] or spec.min) end)
+	box.Focused:Connect(function()
+		box.Text = string.format("%." .. dec .. "f", S[spec.id] or spec.min)
+		boxRim.Color = D.accent()
+		tween(boxRim, 0.18, {Transparency = 0.25})
+	end)
 	box.FocusLost:Connect(function()
+		tween(boxRim, 0.18, {Transparency = 0.72})
 		local n = tonumber(string.match(box.Text, "-?[%d%.]+"))
 		if n then set(spec.id, quantize(n)) end
 		box.Text = fmt(S[spec.id])
@@ -2797,9 +2822,10 @@ function D.makeSegment(parent, opts, get, onPick, width, order)
 	local wrap = frame({Size = UDim2.fromOffset(n * width + (n - 1) * gap + 4, 28), BackgroundColor3 = T.field, LayoutOrder = order, Parent = parent})
 	corner(wrap, M.rField)
 	stroke(wrap, 0.92)
-	local hl = frame({Position = UDim2.fromOffset(2, 2), Size = UDim2.fromOffset(width, 24), BackgroundColor3 = D.accent(), BackgroundTransparency = 0.78, Parent = wrap})
+	local hl = frame({Position = UDim2.fromOffset(2, 2), Size = UDim2.fromOffset(width, 24), BackgroundColor3 = D.accent(), BackgroundTransparency = 0.65, Parent = wrap})
 	corner(hl, math.max(3, M.rField - 2))
 	local labels = {}
+	local slide
 	for i, o in ipairs(opts) do
 		local b = button({Position = UDim2.fromOffset(2 + (i - 1) * (width + gap), 2), Size = UDim2.fromOffset(width, 24), Text = o[2] or o[1], TextSize = 12, TextColor3 = T.sub, ZIndex = 2, Parent = wrap})
 		labels[i] = b
@@ -2809,13 +2835,14 @@ function D.makeSegment(parent, opts, get, onPick, width, order)
 		end)
 	end
 	local function draw(animate)
+		if slide then slide:Cancel() end
 		local cur = get()
 		for i, o in ipairs(opts) do
 			local act = o[1] == cur
-			labels[i].TextColor3 = act and D.accentText() or T.sub
+			if animate then tween(labels[i], 0.18, {TextColor3 = act and D.accentText() or T.sub}) else labels[i].TextColor3 = act and D.accentText() or T.sub end
 			if act then
 				local pos = UDim2.fromOffset(2 + (i - 1) * (width + gap), 2)
-				if animate then tween(hl, 0.26, {Position = pos}, Enum.EasingStyle.Back) else hl.Position = pos end
+				if animate then slide = tween(hl, 0.28, {Position = pos}, Enum.EasingStyle.Quint) else hl.Position = pos end
 			end
 		end
 	end
@@ -5045,11 +5072,13 @@ function D.selectPage(id, instant)
 	end
 	for pid, p in pairs(W.pages) do p.sf.Visible = pid == id end
 	local p = W.pages[id]
+	if W.pageFade then W.pageFade:Cancel(); W.pageFade = nil end
+	if W.pageSlide then W.pageSlide:Cancel(); W.pageSlide = nil end
 	if p and changed and not instant and S.ui_anim ~= false then
 		W.body.GroupTransparency = 0.9
-		tween(W.body, 0.26, {GroupTransparency = 0})
-		p.content.Position = UDim2.fromOffset(0, 14)
-		tween(p.content, 0.36, {Position = UDim2.fromOffset(0, 0)})
+		W.pageFade = tween(W.body, 0.22, {GroupTransparency = 0})
+		p.content.Position = UDim2.fromOffset(10, 6)
+		W.pageSlide = tween(p.content, 0.28, {Position = UDim2.fromOffset(0, 0)})
 	elseif p then
 		W.body.GroupTransparency = 0
 		p.content.Position = UDim2.fromOffset(0, 0)
@@ -5931,7 +5960,8 @@ function D.buildOverlays()
 	if O.root then O.root:Destroy() end
 	O.root = frame({Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Parent = D.L.ov})
 
-	local wx, wy = clampPos(D.META.wm_x or 16, D.META.wm_y or 70, 200, 38)
+	local viewport = D.viewport()
+	local wx, wy = clampPos(D.META.wm_x or math.floor(viewport.X / 2 - 290), D.META.wm_y or 144, 580, 38)
 	local wm = glassCard({Position = UDim2.fromOffset(wx, wy), Size = UDim2.fromOffset(0, 38), AutomaticSize = Enum.AutomaticSize.X, Parent = O.root}, 0.4)
 	O.wm = wm
 	pad(wm, 0, 14, 0, 9)
@@ -5957,7 +5987,18 @@ function D.buildOverlays()
 			local ring = new("UIStroke", {Color = D.accent(), Thickness = 1.5, Parent = av})
 			D.onAccent(av, function(a) ring.Color = a end)
 		end
-		O.wmParts[d[1]] = {sep = sep, grp = grp, lbl = l}
+		local part = {sep = sep, grp = grp, lbl = l}
+		if d[1] == "fps" or d[1] == "ping" or d[1] == "time" or d[1] == "uptime" then
+			local valueGroup = frame({Size = UDim2.fromOffset(0, 38), AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 1, LayoutOrder = 2, Parent = grp})
+			hlist(valueGroup, 3)
+			part.reel = frame({Size = UDim2.fromOffset(0, 18), BackgroundTransparency = 1, LayoutOrder = 1, Parent = valueGroup})
+			part.digits = {}
+			l:Destroy()
+			if d[1] == "fps" or d[1] == "ping" then
+				text({Text = d[1] == "fps" and "FPS" or "ms", Size = UDim2.fromOffset(0, 38), AutomaticSize = Enum.AutomaticSize.X, FontFace = D.F(D.W.semi), TextSize = 13, TextColor3 = T.text, LayoutOrder = 2, Parent = valueGroup})
+			end
+		end
+		O.wmParts[d[1]] = part
 	end
 	for i, cp in ipairs(D.WM_PARTS or {}) do
 		local sep = frame({Size = UDim2.fromOffset(1, 16), BackgroundColor3 = T.ink, BackgroundTransparency = 0.85, LayoutOrder = 100 + i * 2, Parent = wm})
@@ -5972,7 +6013,7 @@ function D.buildOverlays()
 	end
 	draggable(wm, "wm_x", "wm_y")
 
-	local kx, ky = clampPos(D.META.kb_x or 16, D.META.kb_y or 330, 250, 80)
+	local kx, ky = clampPos(D.META.kb_x or math.floor(viewport.X * 0.122), D.META.kb_y or 230, 250, 80)
 	local kb = glassCard({Position = UDim2.fromOffset(kx, ky), Size = UDim2.fromOffset(250, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = O.root}, 0.4)
 	O.kb = kb
 	pad(kb, 12, 12, 12, 12)
@@ -6076,6 +6117,65 @@ function D.lookupRegion()
 	end
 end
 
+function D.rollWatermark(part, value)
+	local now = os.clock()
+	if part.value == value or (part.lastRoll and now - part.lastRoll < 0.5) then return end
+	part.value = value
+	part.lastRoll = now
+	local offset = 0
+	for i = 1, #value do
+		local char = value:sub(#value - i + 1, #value - i + 1)
+		local width = char == ":" and 3.5 or char == "1" and 5 or 7.5
+		local digit = part.digits[i]
+		if not digit then
+			local clip = frame({AnchorPoint = Vector2.new(1, 0), Size = UDim2.fromOffset(width, 18), BackgroundTransparency = 1, ClipsDescendants = true, Parent = part.reel})
+			local label = text({Text = "", Size = UDim2.fromScale(1, 1), FontFace = D.F(D.W.semi), TextSize = 13, TextColor3 = T.text, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Center, Parent = clip})
+			local incoming = label:Clone()
+			incoming.Position = UDim2.fromScale(0, -1)
+			incoming.Parent = clip
+			digit = {clip = clip, label = label, incoming = incoming}
+			part.digits[i] = digit
+		end
+		digit.clip.Position = UDim2.new(1, -offset, 0, 0)
+		digit.clip.Size = UDim2.fromOffset(width, 18)
+		offset += width
+		if digit.value ~= char then
+			if digit.outTween then digit.outTween:Cancel() end
+			if digit.inTween then digit.inTween:Cancel() end
+			local previous = digit.value
+			digit.token = (digit.token or 0) + 1
+			local token = digit.token
+			digit.value = char
+			digit.label.Position = UDim2.fromScale(0, 0)
+			digit.incoming.Position = UDim2.fromScale(0, -1)
+			digit.incoming.Text = char
+			if previous == nil or not char:match("%d") or not O.wm.Visible or S.ui_anim == false then
+				digit.label.Text = char
+			else
+				digit.label.Text = previous
+				digit.outTween = D.tween(digit.label, 0.28, {Position = UDim2.fromScale(0, 1)}, Enum.EasingStyle.Cubic)
+				digit.inTween = D.tween(digit.incoming, 0.28, {Position = UDim2.fromScale(0, 0)}, Enum.EasingStyle.Cubic)
+				task.delay(D.tweenTime(0.28), function()
+					if digit.token ~= token or not digit.clip.Parent then return end
+					if digit.outTween then digit.outTween:Cancel() end
+					if digit.inTween then digit.inTween:Cancel() end
+					digit.label.Text = char
+					digit.label.Position = UDim2.fromScale(0, 0)
+					digit.incoming.Position = UDim2.fromScale(0, -1)
+				end)
+			end
+		end
+	end
+	part.reel.Size = UDim2.fromOffset(offset, 18)
+	for i = #part.digits, #value + 1, -1 do
+		local digit = part.digits[i]
+		if digit.outTween then digit.outTween:Cancel() end
+		if digit.inTween then digit.inTween:Cancel() end
+		digit.clip:Destroy()
+		part.digits[i] = nil
+	end
+end
+
 function D.refreshOverlays(fps, ping)
 	if not O.wm then return end
 	fps = fps or D.lastFps or 0
@@ -6103,7 +6203,9 @@ function D.refreshOverlays(fps, ping)
 		end
 		part.sep.Visible = v ~= nil
 		part.grp.Visible = v ~= nil
-		if v then part.lbl.Text = v end
+		if v then
+			if part.reel then D.rollWatermark(part, k == "fps" and tostring(fps) or k == "ping" and tostring(ping) or v) else part.lbl.Text = v end
+		end
 	end
 	D.refreshKeybinds()
 	if O.ks then O.ks.Visible = S.ov_ks and not D.cleanShot end
@@ -6961,9 +7063,10 @@ end
 D.WIDGETS = {}
 function D.refreshWidget(w)
 	local card = w.inst
-	if not card or not card.Parent then return end
+	if not card then return end
 	card.Visible = w.visible ~= false and not D.cleanShot
 	w.titleL.Text = w.title
+	if w.headerValueL then w.headerValueL.Text = tostring(w.headerValue) end
 	for i, k in ipairs(w.order) do
 		local r = w.rowsInst[k]
 		if not r then
@@ -6983,7 +7086,8 @@ function D.refreshWidget(w)
 			w.rowsInst[k] = nil
 		end
 	end
-	w.empty.Visible = #w.order == 0
+	w.list.Visible = not w.headerOnly
+	w.empty.Visible = not w.headerOnly and #w.order == 0
 end
 
 local function buildWidget(w, root, index)
@@ -7001,7 +7105,10 @@ local function buildWidget(w, root, index)
 		badge.BackgroundColor3 = a
 		D.iconColor(ic, D.accentText())
 	end)
-	w.titleL = text({Text = w.title, FontFace = D.F(D.W.semi), TextSize = 13, TextColor3 = T.text, Position = UDim2.fromOffset(28, 0), Size = UDim2.new(1, -28, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, Parent = hd})
+	w.titleL = text({Text = w.title, FontFace = D.F(D.W.semi), TextSize = 13, TextColor3 = T.text, Position = UDim2.fromOffset(28, 0), Size = UDim2.new(1, w.headerValue ~= nil and -72 or -28, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd, Parent = hd})
+	if w.headerValue ~= nil then
+		w.headerValueL = text({Text = tostring(w.headerValue), FontFace = D.F(D.W.semi), TextSize = 13, TextColor3 = T.text, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0, 40, 1, 0), TextXAlignment = Enum.TextXAlignment.Right, Parent = hd})
+	end
 	w.list = frame({Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = 2, Parent = card})
 	vlist(w.list, 3)
 	w.empty = text({Text = w.emptyText or "No data", TextSize = 12, TextColor3 = T.dim, Size = UDim2.new(1, 0, 0, 16), LayoutOrder = -1, Parent = w.list})
@@ -9729,12 +9836,17 @@ function Widget:Clear()
 end
 function Widget:SetTitle(t)
 	self.w.title = tostring(t)
-	if self.w.titleL and self.w.titleL.Parent then self.w.titleL.Text = self.w.title end
+	if self.w.titleL then self.w.titleL.Text = self.w.title end
 	return self
 end
 function Widget:SetVisible(v)
 	self.w.visible = v and true or false
 	D.refreshWidget(self.w)
+	return self
+end
+function Widget:SetHeaderValue(value)
+	self.w.headerValue = value
+	if self.w.headerValueL then self.w.headerValueL.Text = tostring(value) end
 	return self
 end
 function Widget:Destroy()
@@ -9746,7 +9858,7 @@ end
 function API:Widget(o)
 	o = type(o) == "string" and {Name = o} or o or {}
 	local title = o.Name or o.Title or "Widget"
-	local w = {key = slug(o.Flag or title), title = title, icon = o.Icon, width = o.Width or 220, visible = o.Visible ~= false, emptyText = o.Empty, values = {}, colors = {}, order = {}}
+	local w = {key = slug(o.Flag or title), title = title, icon = o.Icon, width = o.Width or 220, visible = o.Visible ~= false, emptyText = o.Empty, headerValue = o.HeaderValue, headerOnly = o.HeaderOnly == true, values = {}, colors = {}, order = {}}
 	if o.Position then w.x, w.y = o.Position.X, o.Position.Y end
 	table.insert(D.WIDGETS, w)
 	local h = setmetatable({w = w}, Widget)
@@ -10105,6 +10217,16 @@ function Tab:MoveTo(index)
 	end
 	return self
 end
+function Tab:SetContent(sections, build)
+	self.entry.page = sections or {}
+	self.entry.customPage = build and function(holder, api)
+		local ok, err = pcall(build, holder, api)
+		if not ok then D.logError(err) end
+	end or nil
+	navChanged()
+	return self
+end
+
 function Tab:CustomPage(build)
 	self.entry.page = self.entry.page or {}
 	self.entry.children = nil
@@ -10605,3 +10727,4 @@ end
 API.Window = API.CreateWindow
 end
 return D.API
+
